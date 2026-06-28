@@ -17,5 +17,5 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = [".."]
+where = ["."]
 include = ["data_platform*"]
