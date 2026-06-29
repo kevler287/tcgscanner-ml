@@ -1,7 +1,0 @@
-Evaluation summary — v1
-========================================
-Total images: 2079
-Total detections: 2079
-
-IoU per class:
-  ygo_card: mean=0.9853  min=0.7003  max=0.9949  n=2079

@@ -6,28 +6,16 @@ Machine learning pipeline for [TCG Scanner](https://github.com/kevler287/tcgscan
 
 **Tech Stack:** Python · PyTorch · YOLOv11 · OpenCV · Prefect · Google Cloud Storage · BigQuery · CUDA
 
-## Architecture
-
-```
-GCS (raw cards + backgrounds)
-        ↓  Extract
-    local cache
-        ↓  Transform
-    synthetic YOLO dataset (perspective warp, glare, blur, augmentation)
-        ↓  Train
-    YOLO segmentation model
-        ↓  Evaluate
-    IoU + mAP metrics on test set
-        ↓  Load
-    best.pt → GCS · training results → BigQuery
-```
+---
 
 ## Requirements
 
 - Python 3.10+
-- NVIDIA GPU + CUDA
+- NVIDIA GPU + CUDA (training pipeline)
 - Google Cloud account with GCS and BigQuery enabled
 - Prefect Cloud account
+
+---
 
 ## Setup
 
@@ -35,37 +23,76 @@ GCS (raw cards + backgrounds)
 pip install -e .
 ```
 
-Configure credentials:
-create .env file and fill in GOOGLE_APPLICATION_CREDENTIALS, LOCAL_CARDS_DIR, LOCAL_BG_DIR
+Configure credentials — create a `.env` file:
 
-Set up BigQuery tables:
-```bash
-python data_platform/setup/setup_bigquery.py
+```
+GOOGLE_APPLICATION_CREDENTIALS=...
+LOCAL_CARDS_DIR=...
+LOCAL_BG_DIR=...
 ```
 
-Upload raw data to GCS (one-time):
+One-time setup:
+
 ```bash
-python data_platform/setup/upload_raw.py
+# Upload raw data to GCS
+python card_seg/data_pipeline/setup/upload_raw_data.py
 ```
+
+---
 
 ## Usage
 
+**Data Pipeline** — generate and upload a synthetic dataset:
+
 ```bash
-python data_platform/flows/training_flow.py \
-  --model-version v1 \
-  --model-type segmentation \
-  --epochs 50
+python card_seg/data_pipeline/flow.py --dataset-version v1
 ```
 
-## Model Versioning
+---
 
-Releases are tagged per model type:
+## Architecture
+
+### Data Pipeline
 
 ```
-seg/v1    ← Yu-Gi-Oh card segmentation v1
-seg/v2
-foo/v1    ← other model
+GCS (raw cards + backgrounds)
+        ↓  Extract
+    local cache
+        ↓  Transform
+    synthetic YOLO dataset (perspective warp, glare, blur, augmentation)
+        ↓  Load
+    dataset.zip → GCS (datasets/card_seg/v1.zip)
 ```
+
+### Training Pipeline
+
+> **Note:** Work in progress
+
+```
+GCS (dataset.zip)
+        ↓  Extract
+    local cache
+        ↓  Train  [RunPod GPU]
+    YOLO segmentation model
+        ↓  Evaluate
+    mAP50 · mAP50-95 · IoU metrics
+        ↓  Load
+    best.pt + last.pt → GCS (models/card_seg/v1-1/)
+    training metrics   → BigQuery (ml_tracking.training_runs)
+```
+
+## Versioning
+
+Dataset and model versions are managed independently and linked via BigQuery:
+
+```
+datasets/card_seg/v1.zip      ← dataset version
+models/card_seg/v1-1/         ← trained on dataset v1, run 1
+models/card_seg/v1-2/         ← trained on dataset v1, run 2 (different hyperparams)
+models/card_seg/v2-1/         ← trained on dataset v2
+```
+
+---
 
 ## Related
 
