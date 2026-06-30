@@ -47,13 +47,13 @@ def handler(job):
 
     try:
         logger.info("=== Step 2/4: Train ===")
-        train_result = train(data_yaml, run_name=model_version)
+        run_dir = train(data_yaml, run_name=model_version)
     except Exception as e:
         return _error_response("train", e)
 
     try:
         logger.info("=== Step 3/4: Evaluate ===")
-        eval_metrics = evaluate(train_result["best_pt"], data_yaml)
+        eval_metrics = evaluate(run_dir, data_yaml)
     except Exception as e:
         return _error_response("evaluate", e)
 
@@ -63,9 +63,7 @@ def handler(job):
             model_version=model_version,
             dataset_version=dataset_version,
             dataset_size=dataset_size,
-            best_pt=train_result["best_pt"],
-            last_pt=train_result["last_pt"],
-            epoch_metrics=train_result["epoch_metrics"],
+            run_dir=run_dir,
             eval_metrics=eval_metrics,
         )
     except Exception as e:
@@ -74,10 +72,6 @@ def handler(job):
     logger.info("=== Done ===")
     return {
         "status": "success",
-        "model_version": model_version,
-        "dataset_version": dataset_version,
-        "dataset_size": dataset_size,
-        "eval_metrics": eval_metrics,
         "weight_paths": weight_paths,
     }
 
@@ -91,5 +85,5 @@ def _error_response(step: str, exc: Exception) -> dict:
         "traceback": traceback.format_exc(),
     }
 
-
-runpod.serverless.start({"handler": handler})
+if __name__ == "__main__":
+    runpod.serverless.start({"handler": handler})

@@ -1,4 +1,6 @@
 import logging
+import os
+from pathlib import Path
 
 from ultralytics import YOLO
 
@@ -11,9 +13,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 YOLO_CFG = CONFIG.yolo_seg
+WORKSPACE_DIR = os.environ.get("WORKSPACE_DIR", "/workspace")
 
 
-def train(data_yaml: str, run_name: str, project_dir: str = "/workspace/runs"):
+def train(data_yaml: str, run_name: str, project_dir: str = None):
+    if project_dir is None:
+        project_dir = f"{WORKSPACE_DIR}/runs"
+
     logger.info("Starting training: %s", run_name)
 
     model = YOLO(YOLO_CFG.pretrained_model)
@@ -33,29 +39,5 @@ def train(data_yaml: str, run_name: str, project_dir: str = "/workspace/runs"):
     )
 
     run_dir = results.save_dir
-    best_pt = run_dir / "weights" / "best.pt"
-    last_pt = run_dir / "weights" / "last.pt"
-
-    if not best_pt.exists():
-        raise FileNotFoundError(f"Training finished but best.pt not found: {best_pt}")
-
     logger.info("Training complete. Weights at %s", run_dir / "weights")
-
-    # Per-epoch metrics for BigQuery (training_epoch_table)
-    epoch_metrics = []
-    if hasattr(results, "results_dict"):
-        # results.csv in run_dir holds per-epoch history
-        csv_path = run_dir / "results.csv"
-        if csv_path.exists():
-            import csv as csv_module
-            with open(csv_path) as f:
-                reader = csv_module.DictReader(f)
-                for row in reader:
-                    epoch_metrics.append({k.strip(): v.strip() for k, v in row.items()})
-
-    return {
-        "best_pt": str(best_pt),
-        "last_pt": str(last_pt),
-        "run_dir": str(run_dir),
-        "epoch_metrics": epoch_metrics,
-    }
+    return run_dir

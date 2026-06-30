@@ -1,6 +1,9 @@
 import logging
 from google.cloud import bigquery
+import dotenv
 from card_seg.config import CONFIG
+
+dotenv.load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -82,7 +85,7 @@ def setup():
 
     create_dataset(client)
     create_table(client, CONFIG.model_results_dataset.model_runs_table,       MODEL_RUNS_SCHEMA)
-    create_table(client, CONFIG.model_results_dataset.traing_epoch_table,  TRAINING_EPOCHS_SCHEMA)
+    create_table(client, CONFIG.model_results_dataset.training_epoch_table,  TRAINING_EPOCHS_SCHEMA)
 
     logger.info("BigQuery setup complete.")
 

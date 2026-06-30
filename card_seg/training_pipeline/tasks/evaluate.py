@@ -37,12 +37,18 @@ def compute_iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
     return float(intersection / union) if union > 0 else 0.0
 
 
-def evaluate(model_path: Path, dataset_dir: Path) -> dict:
-    test_img_dir = dataset_dir / "images/test"
-    test_lbl_dir = dataset_dir / "labels/test"
-    data_yaml    = dataset_dir / "data.yaml"
+def evaluate(run_dir: str, data_yaml_path: str) -> dict:
+    data_yaml    = Path(data_yaml_path)
+    test_img_dir = data_yaml.parent / "images/test"
+    test_lbl_dir = data_yaml.parent / "labels/test"
 
-    model       = YOLO(str(model_path))
+    run_dir = Path(run_dir)
+    best_pt = run_dir / "weights" / "best.pt"
+
+    if not best_pt.exists():
+        raise FileNotFoundError(f"Training finished but best.pt not found: {best_pt}")
+    
+    model       = YOLO(str(best_pt))
     image_paths = sorted(test_img_dir.glob("*.[jp][pn]g"))
 
     if not image_paths:
@@ -96,14 +102,3 @@ def evaluate(model_path: Path, dataset_dir: Path) -> dict:
 
     logger.info("Evaluation complete: %s", metrics)
     return metrics
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", required=True, help="Path to best.pt")
-    args = parser.parse_args()
-
-    metrics = evaluate(model_path = Path(args.model_path))
-
-    for k, v in metrics.items():
-        print(f"  {k}: {v}")

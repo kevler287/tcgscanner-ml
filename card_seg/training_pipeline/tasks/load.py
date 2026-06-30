@@ -1,8 +1,7 @@
-import csv
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-
+from dotenv import load_dotenv
 from google.cloud import bigquery, storage
 
 from card_seg.config import CONFIG
@@ -13,15 +12,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+load_dotenv()
+
 BUCKET_NAME      = CONFIG.bucket.name
-PF_MODELS        = CONFIG.pf_models
+PF_MODELS        = CONFIG.bucket.pf_models
 BQ_DATASET       = CONFIG.model_results_dataset.name
 MODEL_RUNS_TABLE = CONFIG.model_results_dataset.model_runs_table
 EPOCHS_TABLE     = CONFIG.model_results_dataset.training_epoch_table
 MODEL_PREFIX = CONFIG.model_prefix
 
 
-def upload_weights(best_pt: str, last_pt: str, model_version: str) -> dict:
+def upload_weights(run_dir: Path, model_version: str) -> dict:
+    best_pt = run_dir / "weights" / "best.pt"
+    last_pt = run_dir / "weights" / "last.pt"
+
+    if not best_pt.exists():
+        raise FileNotFoundError(f"best.pt not found. Aborting Pipeline.")
+    
     client = storage.Client()
     bucket = client.bucket(BUCKET_NAME)
 
@@ -89,7 +96,17 @@ def insert_model_run(
     logger.info("Inserted model_run row for %s", model_version)
 
 
-def insert_training_epochs(model_version: str, epoch_metrics: list[dict]):
+def insert_training_epochs(model_version: str, run_dir: Path):
+    epoch_metrics = []
+    # results.csv in run_dir holds per-epoch history
+    csv_path = run_dir / "results.csv"
+    if csv_path.exists():
+        import csv as csv_module
+        with open(csv_path) as f:
+            reader = csv_module.DictReader(f)
+            for row in reader:
+                epoch_metrics.append({k.strip(): v.strip() for k, v in row.items()})
+    
     if not epoch_metrics:
         logger.warning("No epoch metrics to insert, skipping.")
         return
@@ -135,14 +152,13 @@ def load(
     model_version: str,
     dataset_version: str,
     dataset_size: int,
-    best_pt: str,
-    last_pt: str,
-    epoch_metrics: list[dict],
+    run_dir: str,
     eval_metrics: dict,
 ):
-    weight_paths = upload_weights(best_pt, last_pt, model_version)
+    run_dir = Path(run_dir)
+    weight_paths = upload_weights(run_dir, model_version)
     insert_model_run(model_version, dataset_version, dataset_size, eval_metrics)
-    insert_training_epochs(model_version, epoch_metrics)
+    insert_training_epochs(model_version, run_dir)
 
     logger.info("Load complete. Weights at %s", weight_paths)
     return weight_paths
