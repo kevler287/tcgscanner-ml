@@ -54,14 +54,14 @@ def train(model_version: str, epochs: int = None) -> Path:
 @task(name="Evaluate")
 def evaluate(run_dir: Path):
     """Evaluate model on test set and compute IoU metrics."""
-    from card_seg.traning_pipeline.tasks.evaluate import evaluate as run_evaluate
+    from card_seg.training_pipeline.tasks.evaluate import evaluate as run_evaluate
     return run_evaluate(model_path=run_dir / "weights/best.pt")
 
 
 @task(name="Load")
 def load(model_version: str, model_type: str, run_dir: Path, eval_metrics: dict):
     """Upload best.pt to GCS and write model results to BigQuery."""
-    from card_seg.traning_pipeline.tasks.load import load as run_load
+    from card_seg.training_pipeline.tasks.load import load as run_load
     run_load(model_version, model_type, run_dir, eval_metrics)
 
 

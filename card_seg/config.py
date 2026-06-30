@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from config.project_config import ProjectConfig
 
 @dataclass
-class YoloSegConfig:
+class TrainingFlowConfig:
     pretrained_model: str   = "yolo11n-seg.pt"
     epochs:           int   = 300
     imgsz:            int   = 640
@@ -14,7 +14,7 @@ class YoloSegConfig:
 
 
 @dataclass
-class TransformConfig:
+class DataFlowConfig:
     output_dir:       str   = "card_seg/data_pipeline/output"
     background_size:  tuple = (600, 800)
     max_angle_deg:    int   = 10
@@ -26,14 +26,15 @@ class TransformConfig:
 
 @dataclass
 class CardSegConfig(ProjectConfig):
+    model_prefix: str = "card_seg"
     pf_ygo_cards: str = ""
     pf_bg: str = ""
-    yolo_seg:    YoloSegConfig   = field(default_factory=YoloSegConfig)
-    transform:   TransformConfig = field(default_factory=TransformConfig)
+    yolo_seg:    TrainingFlowConfig   = field(default_factory=TrainingFlowConfig)
+    transform:   DataFlowConfig = field(default_factory=DataFlowConfig)
 
     def __post_init__(self):
-        self.bucket.pf_datasets = self.bucket.pf_datasets + "card_seg/"
-        self.bucket.pf_models   = self.bucket.pf_models   + "card_seg/"
+        self.bucket.pf_datasets = self.bucket.pf_datasets + self.model_prefix + "/"
+        self.bucket.pf_models   = self.bucket.pf_models   + self.model_prefix + "/"
         self.pf_ygo_cards = self.bucket.pf_raw + "ygo_cards/"
         self.pf_bg = self.bucket.pf_raw + "backgrounds/"
 

@@ -1,6 +1,6 @@
 import logging
 from google.cloud import bigquery
-from data_platform.config import CONFIG
+from card_seg.config import CONFIG
 
 logging.basicConfig(
     level=logging.INFO,
@@ -9,11 +9,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 MODEL_RUNS_SCHEMA = [
-    bigquery.SchemaField("model_type",       "STRING",    mode="REQUIRED"),
+    bigquery.SchemaField("model_prefix",       "STRING",    mode="REQUIRED"),
     bigquery.SchemaField("model_version",    "STRING",    mode="REQUIRED"),
     bigquery.SchemaField("timestamp",        "TIMESTAMP", mode="REQUIRED"),
     bigquery.SchemaField("class_names",      "STRING",    mode="REPEATED"),
-    bigquery.SchemaField("random_seed",      "INTEGER",   mode="NULLABLE"),
+    bigquery.SchemaField("dataset_version",      "STRING",   mode="NULLABLE"),
     bigquery.SchemaField("dataset_size",     "INTEGER",   mode="NULLABLE"),
     bigquery.SchemaField("samples_per_card", "INTEGER",   mode="NULLABLE"),
     bigquery.SchemaField("train_split",      "FLOAT",     mode="NULLABLE"),
@@ -36,7 +36,7 @@ MODEL_RUNS_SCHEMA = [
 ]
 
 TRAINING_EPOCHS_SCHEMA = [
-    bigquery.SchemaField("model_type",     "STRING",  mode="REQUIRED"),
+    bigquery.SchemaField("model_prefix",     "STRING",  mode="REQUIRED"),
     bigquery.SchemaField("model_version",  "STRING",  mode="REQUIRED"),
     bigquery.SchemaField("epoch",          "INTEGER", mode="REQUIRED"),
     bigquery.SchemaField("train_box_loss", "FLOAT",   mode="NULLABLE"),

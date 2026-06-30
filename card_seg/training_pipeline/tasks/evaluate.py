@@ -1,23 +1,15 @@
 import logging
-import yaml
 import argparse
 from pathlib import Path
 import numpy as np
 from ultralytics import YOLO
 from PIL import Image, ImageDraw
-from data_platform.config import CONFIG
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-
-def load_classes(data_yaml: Path) -> dict:
-    with open(data_yaml) as f:
-        data = yaml.safe_load(f)
-    return data["names"]
 
 
 def load_ground_truth(label_path: Path, img_w: int, img_h: int) -> list:
@@ -45,13 +37,11 @@ def compute_iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
     return float(intersection / union) if union > 0 else 0.0
 
 
-def evaluate(model_path: Path) -> dict:
-    output_dir   = Path(CONFIG.transform.output_dir)
-    test_img_dir = output_dir / "images/test"
-    test_lbl_dir = output_dir / "labels/test"
-    data_yaml    = output_dir / "data.yaml"
+def evaluate(model_path: Path, dataset_dir: Path) -> dict:
+    test_img_dir = dataset_dir / "images/test"
+    test_lbl_dir = dataset_dir / "labels/test"
+    data_yaml    = dataset_dir / "data.yaml"
 
-    classes     = load_classes(data_yaml)
     model       = YOLO(str(model_path))
     image_paths = sorted(test_img_dir.glob("*.[jp][pn]g"))
 
@@ -62,7 +52,6 @@ def evaluate(model_path: Path) -> dict:
     logger.info("Evaluating %d images...", len(image_paths))
 
     all_ious   = []
-    class_ious = {cls: [] for cls in classes.values()}
 
     for img_path in image_paths:
         img          = Image.open(img_path).convert("RGB")
@@ -87,8 +76,6 @@ def evaluate(model_path: Path) -> dict:
                 if gt_cls == cls_id:
                     best_iou = max(best_iou, compute_iou(pred_mask, gt_mask))
 
-            class_name = classes.get(cls_id, str(cls_id))
-            class_ious[class_name].append(best_iou)
             all_ious.append(best_iou)
 
     # Official YOLO val for precision/recall/mAP
