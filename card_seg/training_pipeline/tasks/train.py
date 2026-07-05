@@ -1,6 +1,5 @@
 import logging
 import os
-from pathlib import Path
 
 from ultralytics import YOLO
 
@@ -16,10 +15,7 @@ YOLO_CFG = CONFIG.yolo_seg
 WORKSPACE_DIR = os.environ.get("WORKSPACE_DIR", "/workspace")
 
 
-def train(data_yaml: str, run_name: str, project_dir: str = None):
-    if project_dir is None:
-        project_dir = f"{WORKSPACE_DIR}/runs"
-
+def train(data_yaml: str, run_name: str, work_dir: str = None):
     logger.info("Starting training: %s", run_name)
 
     model = YOLO(YOLO_CFG.pretrained_model)
@@ -33,9 +29,10 @@ def train(data_yaml: str, run_name: str, project_dir: str = None):
         amp=YOLO_CFG.amp,
         optimizer=YOLO_CFG.optimizer,
         lr0=YOLO_CFG.lr0,
-        project=project_dir,
+        project=work_dir,
         name=run_name,
         exist_ok=True,
+        fraction=YOLO_CFG.fraction
     )
 
     run_dir = results.save_dir

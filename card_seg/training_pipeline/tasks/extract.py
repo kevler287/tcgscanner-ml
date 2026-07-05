@@ -3,6 +3,7 @@ import zipfile
 from pathlib import Path
 
 from google.cloud import storage
+from google.oauth2 import service_account
 import yaml
 
 from card_seg.config import CONFIG
@@ -17,7 +18,7 @@ BUCKET_NAME = CONFIG.bucket.name
 PF_DATASETS = CONFIG.bucket.pf_datasets
 
 
-def download_dataset(dataset_version: str, local_dir: Path) -> Path:
+def download_dataset(dataset_version: str, local_dir: Path, creds: service_account.Credentials) -> Path:
     local_dir.mkdir(parents=True, exist_ok=True)
     zip_path = local_dir / f"{dataset_version}.zip"
 
@@ -25,7 +26,7 @@ def download_dataset(dataset_version: str, local_dir: Path) -> Path:
         logger.info("Zip already present at %s, skipping download.", zip_path)
         return zip_path
 
-    client = storage.Client()
+    client = storage.Client(credentials=creds)
     bucket = client.bucket(BUCKET_NAME)
 
     blob_path = PF_DATASETS + f"{dataset_version}.zip"
@@ -55,17 +56,8 @@ def unzip_dataset(zip_path: Path, extract_to: Path) -> Path:
     return extract_to
 
 
-import os
-
-WORKSPACE_DIR = os.environ.get("WORKSPACE_DIR", "/workspace")
-
-
-def extract(dataset_version: str, work_dir: str = None) -> str:
-    if work_dir is None:
-        work_dir = f"{WORKSPACE_DIR}/dataset"
-    work_dir = Path(work_dir)
-
-    zip_path = download_dataset(dataset_version, work_dir)
+def extract(dataset_version: str, creds: service_account.Credentials, work_dir: Path) -> str:
+    zip_path = download_dataset(dataset_version, work_dir, creds)
     dataset_dir = unzip_dataset(zip_path, work_dir)
 
     data_yaml = dataset_dir / "data.yaml"

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
 from google.cloud import bigquery, storage
+from google.oauth2 import service_account
 
 from card_seg.config import CONFIG
 
@@ -21,15 +22,22 @@ MODEL_RUNS_TABLE = CONFIG.model_results_dataset.model_runs_table
 EPOCHS_TABLE     = CONFIG.model_results_dataset.training_epoch_table
 MODEL_PREFIX = CONFIG.model_prefix
 
+def count_dataset_images(data_yaml: str) -> int:
+    dataset_dir = Path(data_yaml).parent
+    return sum(
+        1
+        for split in ("train", "val", "test")
+        for _ in (dataset_dir / "images" / split).glob("*.jpg")
+    )
 
-def upload_weights(run_dir: Path, model_version: str) -> dict:
+def upload_weights(run_dir: Path, model_version: str, creds: service_account.Credentials) -> dict:
     best_pt = run_dir / "weights" / "best.pt"
     last_pt = run_dir / "weights" / "last.pt"
 
     if not best_pt.exists():
         raise FileNotFoundError(f"best.pt not found. Aborting Pipeline.")
     
-    client = storage.Client()
+    client = storage.Client(credentials=creds)
     bucket = client.bucket(BUCKET_NAME)
 
     blob_prefix = PF_MODELS + f"{model_version}/"
@@ -55,8 +63,9 @@ def insert_model_run(
     dataset_version: str,
     dataset_size: int,
     eval_metrics: dict,
+    creds: service_account.Credentials
 ):
-    client = bigquery.Client()
+    client = bigquery.Client(credentials=creds)
     table_id = f"{client.project}.{BQ_DATASET}.{MODEL_RUNS_TABLE}"
 
     transform_cfg = CONFIG.transform
@@ -96,7 +105,7 @@ def insert_model_run(
     logger.info("Inserted model_run row for %s", model_version)
 
 
-def insert_training_epochs(model_version: str, run_dir: Path):
+def insert_training_epochs(model_version: str, run_dir: Path, creds: service_account.Credentials):
     epoch_metrics = []
     # results.csv in run_dir holds per-epoch history
     csv_path = run_dir / "results.csv"
@@ -111,7 +120,7 @@ def insert_training_epochs(model_version: str, run_dir: Path):
         logger.warning("No epoch metrics to insert, skipping.")
         return
 
-    client = bigquery.Client()
+    client = bigquery.Client(credentials=creds)
     table_id = f"{client.project}.{BQ_DATASET}.{EPOCHS_TABLE}"
 
     rows = []
@@ -151,14 +160,16 @@ def _safe_float(value):
 def load(
     model_version: str,
     dataset_version: str,
-    dataset_size: int,
+    data_yaml: int,
     run_dir: str,
     eval_metrics: dict,
+    creds: service_account.Credentials
 ):
     run_dir = Path(run_dir)
-    weight_paths = upload_weights(run_dir, model_version)
-    insert_model_run(model_version, dataset_version, dataset_size, eval_metrics)
-    insert_training_epochs(model_version, run_dir)
+    weight_paths = upload_weights(run_dir, model_version, creds)
+    dataset_size = count_dataset_images(data_yaml)
+    insert_model_run(model_version, dataset_version, dataset_size, eval_metrics, creds)
+    insert_training_epochs(model_version, run_dir, creds)
 
     logger.info("Load complete. Weights at %s", weight_paths)
     return weight_paths

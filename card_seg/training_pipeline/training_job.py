@@ -1,89 +1,89 @@
-import logging
+from dataclasses import dataclass
+import os
+import json
 import traceback
+import logging
 from pathlib import Path
 
-import runpod
+from google.oauth2 import service_account
+import requests
 
 from card_seg.training_pipeline.tasks.extract import extract
 from card_seg.training_pipeline.tasks.train import train
 from card_seg.training_pipeline.tasks.evaluate import evaluate
 from card_seg.training_pipeline.tasks.load import load
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
-def count_dataset_images(data_yaml: str) -> int:
-    dataset_dir = Path(data_yaml).parent
-    return sum(
-        1
-        for split in ("train", "val", "test")
-        for _ in (dataset_dir / "images" / split).glob("*.jpg")
-    )
+@dataclass
+class WorkDirs:
+    root:    Path = Path("/app")
+    dataset: Path = Path("/app/dataset")
+    runs:    Path = Path("/app/runs")
 
 
-def handler(job):
-    job_input = job.get("input", {})
+def main():
+    dirs = WorkDirs()
+    dirs.dataset.mkdir(parents=True, exist_ok=True)
+    dirs.runs.mkdir(parents=True, exist_ok=True)
 
-    dataset_version = job_input.get("dataset_version")
-    model_version = job_input.get("model_version")
+    creds_json = os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
+    creds = service_account.Credentials.from_service_account_info(json.loads(creds_json))
+    os.environ["GOOGLE_CLOUD_PROJECT"] = creds.project_id
 
-    if not dataset_version or not model_version:
-        return {
-            "status": "failed",
-            "step": "validation",
-            "error": "Both 'dataset_version' and 'model_version' are required.",
-        }
+    dataset_version = os.environ["DATASET_VERSION"]
+    model_version = os.environ["MODEL_VERSION"]
 
     try:
         logger.info("=== Step 1/4: Extract ===")
-        data_yaml = extract(dataset_version)
-        dataset_size = count_dataset_images(data_yaml)
-    except Exception as e:
-        return _error_response("extract", e)
-
-    try:
+        data_yaml = extract(
+            dataset_version=dataset_version,
+            creds=creds,
+            work_dir=dirs.dataset
+        )
         logger.info("=== Step 2/4: Train ===")
-        run_dir = train(data_yaml, run_name=model_version)
-    except Exception as e:
-        return _error_response("train", e)
-
-    try:
+        run_dir = train(
+            data_yaml=data_yaml,
+            run_name=model_version,
+            work_dir=dirs.runs
+        )
         logger.info("=== Step 3/4: Evaluate ===")
-        eval_metrics = evaluate(run_dir, data_yaml)
-    except Exception as e:
-        return _error_response("evaluate", e)
-
-    try:
+        eval_metrics = evaluate(
+            run_dir=run_dir,
+            data_yaml_path=data_yaml
+        )
         logger.info("=== Step 4/4: Load ===")
         weight_paths = load(
             model_version=model_version,
             dataset_version=dataset_version,
-            dataset_size=dataset_size,
+            data_yaml=data_yaml,
             run_dir=run_dir,
             eval_metrics=eval_metrics,
         )
+        logger.info("=== Done ===")
+        logger.info("Weights uploaded to: %s", weight_paths)
     except Exception as e:
-        return _error_response("load", e)
-
-    logger.info("=== Done ===")
-    return {
-        "status": "success",
-        "weight_paths": weight_paths,
-    }
+        logger.error("Pipeline failed: %s\n%s", e, traceback.format_exc())
+    finally:
+        _stop_pod()
 
 
-def _error_response(step: str, exc: Exception) -> dict:
-    logger.error("Step '%s' failed: %s", step, exc)
-    return {
-        "status": "failed",
-        "step": step,
-        "error": str(exc),
-        "traceback": traceback.format_exc(),
-    }
+def _stop_pod():
+    pod_id = os.getenv("RUNPOD_POD_ID")
+    api_key = os.getenv("RUNPOD_API_KEY")
+    
+    if not pod_id or not api_key:
+        logger.warning("RUNPOD_POD_ID or RUNPOD_API_KEY not set, skipping auto-stop")
+        return
+
+    response = requests.post(
+        f"https://api.runpod.io/v2/pod/{pod_id}/stop",
+        headers={"Authorization": f"Bearer {api_key}"}
+    )
+    response.raise_for_status()
+    logger.info("Pod stopped successfully")
+
 
 if __name__ == "__main__":
-    runpod.serverless.start({"handler": handler})
+    main()
