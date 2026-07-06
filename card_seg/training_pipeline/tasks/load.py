@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from dotenv import load_dotenv
 from google.cloud import bigquery, storage
@@ -21,6 +22,7 @@ BQ_DATASET       = CONFIG.model_results_dataset.name
 MODEL_RUNS_TABLE = CONFIG.model_results_dataset.model_runs_table
 EPOCHS_TABLE     = CONFIG.model_results_dataset.training_epoch_table
 MODEL_PREFIX = CONFIG.model_prefix
+YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11n-seg.pt")
 
 def count_dataset_images(data_yaml: str) -> int:
     dataset_dir = Path(data_yaml).parent
@@ -83,7 +85,7 @@ def insert_model_run(
         "val_split":        transform_cfg.val_split,
         "test_split":       transform_cfg.test_split,
         "empty_split":      transform_cfg.empty_split,
-        "pretrained_model": yolo_cfg.pretrained_model,
+        "pretrained_model": YOLO_MODEL,
         "epochs_planned":   yolo_cfg.epochs,
         "batch_size":       yolo_cfg.batch,
         "learning_rate":    yolo_cfg.lr0,
