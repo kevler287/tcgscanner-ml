@@ -60,6 +60,7 @@ def main():
             data_yaml=data_yaml,
             run_dir=run_dir,
             eval_metrics=eval_metrics,
+            creds=creds
         )
         logger.info("=== Done ===")
         logger.info("Weights uploaded to: %s", weight_paths)
