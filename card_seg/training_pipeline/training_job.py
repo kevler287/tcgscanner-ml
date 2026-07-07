@@ -74,6 +74,8 @@ def main():
         logger.error("Pipeline failed: %s\n%s", e, traceback.format_exc())
     finally:
         try:
+            file_handler.flush()
+            file_handler.close()
             _save_logs(creds=creds, log_path=dirs.logs, model_version=model_version)
         except Exception as e:
             logger.error("Failed to upload logs: %s", e)

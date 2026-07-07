@@ -1,5 +1,4 @@
 import logging
-import argparse
 from pathlib import Path
 import numpy as np
 from ultralytics import YOLO
@@ -91,10 +90,10 @@ def evaluate(run_dir: str, data_yaml_path: str) -> dict:
 
 
     metrics = {
-        "test_precision": round(precision,                        4),
-        "test_recall":    round(recall,                           4),
-        "test_map50":     round(float(val_results.box.map50),     4),
-        "test_map50_95":  round(float(val_results.box.map),       4),
+        "precision": round(precision,                        4),
+        "recall":    round(recall,                           4),
+        "map50":     round(float(val_results.box.map50),     4),
+        "map50_95":  round(float(val_results.box.map),       4),
         "min_iou":        round(float(np.min(all_ious)),          4) if all_ious else 0.0,
         "max_iou":        round(float(np.max(all_ious)),          4) if all_ious else 0.0,
         "avg_iou":        round(float(np.mean(all_ious)),         4) if all_ious else 0.0,
