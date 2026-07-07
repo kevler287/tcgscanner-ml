@@ -7,7 +7,7 @@ class DefaultTrainConfig:
     imgsz:            int   = 640
     batch:            int   = 16
     device:           int   = 0
-    amp:              bool  = False
+    amp:              bool  = True
     optimizer:        str   = "Adam"
     lr0:              float = 0.001
 
