@@ -83,7 +83,7 @@ def main():
 
 def _save_logs(creds: service_account.Credentials, log_path: Path, model_version: str):
     client = storage.Client(credentials=creds)
-    bucket = client.bucket(CONFIG.bucket_name)
+    bucket = client.bucket(CONFIG.bucket.name)
     blob = bucket.blob(f"models/{CONFIG.model_prefix}/{model_version}/training.log")    
     blob.upload_from_filename(log_path)
     logger.info("Logs uploaded to GCP")
