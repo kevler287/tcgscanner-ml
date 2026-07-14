@@ -16,7 +16,7 @@ def transform():
 
 @task(name="Load")
 def load(dataset_version: str):
-    """Upload best.pt to GCS and write model results to BigQuery."""
+    """Zip dataset and upload back to Google Cloud Storage."""
     from card_seg.data_pipeline.tasks.load import load as run_load
     run_load(dataset_version)
 
