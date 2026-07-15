@@ -17,6 +17,7 @@ class TransformConfig:
     crop_margin: float = 0.2
     edition_0 = [[0.05, 0.7], [0.3, 0.76]]
     edition_1 = [[0.177, 0.9375], [0.38, 0.99]]
+    val_split:        float = 0.1
 
 
 @dataclass

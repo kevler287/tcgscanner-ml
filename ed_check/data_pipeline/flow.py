@@ -16,17 +16,21 @@ def transform():
 
 
 @task(name="Load")
-def load(dataset_version: str):
+def load():
     """Zip dataset and upload back to Google Cloud Storage."""
     from common.data_pipeline.load import load as run_load
-    run_load(dataset_version)
+    run_load(
+        bucket_name=CONFIG.bucket.name, 
+        source_dir=CONFIG.transform_cfg.output_dir, 
+        dest_dir=CONFIG.bucket.pf_datasets
+    )
 
 
-@flow(name="Card Segmentation Data Pipeline")
+@flow(name="Edition Checker Data Pipeline")
 def data_pipeline():
     extract()
     transform()
-    # load(dataset_version)
+    load()
 
 
 if __name__ == "__main__":

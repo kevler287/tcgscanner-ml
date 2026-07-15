@@ -100,6 +100,15 @@ def determine_editions_for_subdir(subdir_name: str):
 
 def run_crop_transform() -> int:
     out_path = Path(CONFIG.transform_cfg.output_dir)
+
+    train_path_0 = out_path / "train" / "other_ed"
+    train_path_1 = out_path / "train" / "first_ed"
+    val_path_0 = out_path / "val" / "other_ed"
+    val_path_1 = out_path / "val" / "first_ed"
+
+    for path in [train_path_0, train_path_1, val_path_0, val_path_1]:
+        path.mkdir(parents=True, exist_ok=True)
+
     in_path = LOCAL_DATA_DIR / CONFIG.pf_ed_types
 
     total_crops = 0
@@ -114,23 +123,34 @@ def run_crop_transform() -> int:
 
         for image_path in images:
             for i, position in enumerate(positions):
+                for j in range(CONFIG.transform_cfg.samples_per_type):
+                    img = crop_edition(image_path, position)
+                    img, _ = transform_helper.random_perspective_warp(img, max_angle_deg=5)
+                    img = random_crop_within_margin(img, margin=CONFIG.transform_cfg.crop_margin)
+                    img = transform_helper.add_brightness_contrast(img)
+                    img = transform_helper.random_glare(img, max_intensity=0.3)
+                    img = transform_helper.add_blur(img, params=[1,3])
 
-                # For "unlimited" (2 editions per image), append a suffix
-                # to avoid overwriting. For _0/_1 dirs (1 edition), keep
-                # the original filename.
-                if len(positions) > 1:
-                    out_name = f"{image_path.stem}_{i}{image_path.suffix}"
-                else:
-                    out_name = image_path.name
+                    # For "unlimited" (2 editions per image), append a suffix
+                    # to avoid overwriting. For _0/_1 dirs (1 edition), keep
+                    # the original filename.
+                    if len(positions) > 1:
+                        out_name = f"{subdir.name}_{i}_{image_path.stem}_{j}{image_path.suffix}"
+                    else:
+                        out_name = f"{subdir.name}_{image_path.stem}_{j}{image_path.suffix}"
 
-                image_out_path = out_path / subdir.name / out_name
-                img = crop_edition(image_path, position)
-                img, _ = transform_helper.random_perspective_warp(img, max_angle_deg=5)
-                img = random_crop_within_margin(img, margin=CONFIG.transform_cfg.crop_margin)
-                img = transform_helper.add_brightness_contrast(img)
-                img = transform_helper.random_glare(img, max_intensity=0.5)
-                img = transform_helper.add_blur(img, params=[1,3])
-                cv2.imwrite(str(image_out_path), img)
-                total_crops += 1
+                    if j > CONFIG.transform_cfg.samples_per_type * CONFIG.transform_cfg.val_split:
+                        if "first" in subdir.name:
+                            dest_path = train_path_1 / out_name
+                        else:
+                            dest_path = train_path_0 / out_name
+                    else:
+                        if "first" in subdir.name:
+                            dest_path = val_path_1 / out_name
+                        else:
+                            dest_path = val_path_0 / out_name
+                    
+                    cv2.imwrite(str(dest_path), img)
+                    total_crops += 1
 
     return total_crops

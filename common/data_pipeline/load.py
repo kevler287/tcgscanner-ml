@@ -19,11 +19,11 @@ def zip_dataset(source_dir: Path) -> Path:
     return zip_path
 
 
-def upload_to_gcs(bucket_name: str, zip_path: Path, dest_dir: str) -> str:
+def upload_to_gcs(bucket_name: str, zip_path: Path, dest_prefix: str) -> str:
     client = storage.Client()
     bucket = client.bucket(bucket_name)
 
-    blob_path = str(Path(dest_dir) / zip_path.name)
+    blob_path = str(Path(dest_prefix) / zip_path.name)
     blob = bucket.blob(blob_path)
 
     if blob.exists():
