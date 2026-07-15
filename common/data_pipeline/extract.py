@@ -26,11 +26,24 @@ def download_from_gcs(bucket, prefix: str, local_dir: Path):
         logger.warning("No files found in GCS under %s", prefix)
         return
 
+    # Normalize prefix so relative paths are computed correctly
+    prefix_norm = prefix.rstrip("/") + "/" if prefix else ""
+
     for i, blob in enumerate(blobs, 1):
-        filename   = Path(blob.name).name
-        local_path = local_dir / filename
+        # Skip empty "directory marker" objects, if any
+        if blob.name.endswith("/"):
+            continue
+
+        # Mirror the object name structure below the prefix, e.g.
+        # prefix="yugioh" and blob.name="yugioh/first_ed_0/normal_en.jpeg"
+        # -> relative_path="first_ed_0/normal_en.jpeg"
+        relative_path = blob.name[len(prefix_norm):] if prefix_norm else blob.name
+
+        local_path = local_dir / relative_path
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+
         blob.download_to_filename(str(local_path))
-        logger.info("[%d/%d] Downloaded %s", i, len(blobs), filename)
+        logger.info("[%d/%d] Downloaded %s", i, len(blobs), relative_path)
 
     logger.info("Download complete: %d files → %s", len(blobs), local_dir)
 

@@ -18,4 +18,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["card_seg", "config"]
+include = ["card_seg", "ed_check", "common", "config"]

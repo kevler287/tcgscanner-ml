@@ -1,5 +1,6 @@
 credentials/
 */data_pipeline/output/
+*/data_pipeline/v?/
 runs/
 yolo11n-seg.pt
 
