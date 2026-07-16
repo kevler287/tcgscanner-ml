@@ -1,0 +1,17 @@
+[
+  {"name": "model_prefix", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "model_version", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "epoch", "type": "INTEGER", "mode": "REQUIRED"},
+  {"name": "train_box_loss", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "train_seg_loss", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "train_cls_loss", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "train_dfl_loss", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "val_box_loss", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "val_seg_loss", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "val_cls_loss", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "val_dfl_loss", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "val_precision", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "val_recall", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "val_map50", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "val_map50_95", "type": "FLOAT", "mode": "NULLABLE"}
+]
