@@ -15,8 +15,13 @@ Expected folder structure under data_dir:
                 ...
             other_ed/
                 ...
+
+Outputs (written into dest_dir):
+    dest_dir/best.pt          - best checkpoint (by val_acc)
+    dest_dir/metrics.csv      - per-epoch train/val loss & accuracy
 """
 
+import csv
 import time
 from pathlib import Path
 
@@ -25,22 +30,23 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
+from ed_check.config import CONFIG
 
 
-def get_dataloaders(data_dir, batch_size, num_workers):
+def get_dataloaders(data_dir):
     # ImageNet normalization since we're using pretrained weights
     normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
     )
 
     train_transform = transforms.Compose([
-        transforms.Resize((64, 192)),
+        transforms.Resize(CONFIG.train_cfg.imgsz),
         transforms.ToTensor(),
         normalize,
     ])
 
     val_transform = transforms.Compose([
-        transforms.Resize((64, 192)),
+        transforms.Resize(CONFIG.train_cfg.imgsz),
         transforms.ToTensor(),
         normalize,
     ])
@@ -50,12 +56,12 @@ def get_dataloaders(data_dir, batch_size, num_workers):
     val_ds = datasets.ImageFolder(data_dir / "val", transform=val_transform)
 
     train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=True,
+        train_ds, batch_size=CONFIG.train_cfg.batch, shuffle=True,
+        num_workers=CONFIG.train_cfg.num_workers, pin_memory=True,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True,
+        val_ds, batch_size=CONFIG.train_cfg.batch, shuffle=False,
+        num_workers=CONFIG.train_cfg.num_workers, pin_memory=True,
     )
 
     print(f"Classes: {train_ds.classes}")
@@ -99,30 +105,20 @@ def run_epoch(model, loader, criterion, optimizer, device, train=True):
     return total_loss / total, correct / total
 
 
-def train(
-    data_dir,
-    output_path="best.pt",
-    epochs=20,
-    batch_size=16,
-    lr=1e-4,
-    num_workers=8,
-):
+def train(data_dir):
     """
     Train a ResNet18 binary classifier.
 
     Args:
         data_dir: path to dataset root, must contain train/ and val/ subfolders
                    with one folder per class (e.g. first_ed/, other_ed/)
-        output_path: where to save the best checkpoint
-        epochs: number of training epochs
-        batch_size: batch size for train/val loaders
-        lr: learning rate
-        num_workers: dataloader worker processes
     """
+    results_dir = Path(CONFIG.train_cfg.results_dir)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = results_dir / "best.pt"
+    metrics_path = results_dir / "metrics.csv"
 
-    train_loader, val_loader, classes = get_dataloaders(
-        data_dir, batch_size, num_workers
-    )
+    train_loader, val_loader, classes = get_dataloaders(data_dir)
 
     model = build_model(num_classes=len(classes))
 
@@ -132,7 +128,7 @@ def train(
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()), lr=lr
+        filter(lambda p: p.requires_grad, model.parameters()), lr=CONFIG.train_cfg.lr0
     )
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=2
@@ -140,34 +136,49 @@ def train(
 
     best_val_acc = 0.0
 
-    for epoch in range(1, epochs + 1):
-        t0 = time.time()
+    with open(metrics_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "epoch", "train_loss", "train_acc",
+            "val_loss", "val_acc", "lr", "duration_sec",
+        ])
 
-        train_loss, train_acc = run_epoch(
-            model, train_loader, criterion, optimizer, device, train=True
-        )
-        val_loss, val_acc = run_epoch(
-            model, val_loader, criterion, optimizer, device, train=False
-        )
+        for epoch in range(1, CONFIG.train_cfg.epochs + 1):
+            t0 = time.time()
 
-        scheduler.step(val_loss)
-        dt = time.time() - t0
+            train_loss, train_acc = run_epoch(
+                model, train_loader, criterion, optimizer, device, train=True
+            )
+            val_loss, val_acc = run_epoch(
+                model, val_loader, criterion, optimizer, device, train=False
+            )
 
-        print(
-            f"Epoch {epoch:02d}/{epochs} | "
-            f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
-            f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} | "
-            f"{dt:.1f}s"
-        )
+            scheduler.step(val_loss)
+            dt = time.time() - t0
+            current_lr = optimizer.param_groups[0]["lr"]
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            torch.save({
-                "model_state_dict": model.state_dict(),
-                "classes": classes,
-                "val_acc": val_acc,
-            }, output_path)
-            print(f"  -> new best model saved ({output_path}), val_acc={val_acc:.4f}")
+            print(
+                f"Epoch {epoch:02d}/{CONFIG.train_cfg.epochs} | "
+                f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
+                f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} | "
+                f"{dt:.1f}s"
+            )
+
+            writer.writerow([
+                epoch, f"{train_loss:.6f}", f"{train_acc:.6f}",
+                f"{val_loss:.6f}", f"{val_acc:.6f}", current_lr, f"{dt:.2f}",
+            ])
+            f.flush()
+
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                torch.save({
+                    "model_state_dict": model.state_dict(),
+                    "classes": classes,
+                    "val_acc": val_acc,
+                }, checkpoint_path)
+                print(f"  -> new best model saved ({checkpoint_path}), val_acc={val_acc:.4f}")
 
     print(f"\nDone. Best val_acc: {best_val_acc:.4f}")
+    print(f"Metrics written to {metrics_path}")
     return best_val_acc

@@ -90,6 +90,18 @@ def extract(
     creds = load_credentials(credentials_path=creds_path)
     zip_path = download_dataset(dataset_version, bucket_name, blob_prefix, dest_dir, creds)
     dataset_dir = unzip_dataset(zip_path, dest_dir)
+    return dataset_dir
+
+def extract_yolo(
+    dataset_version: str,
+    bucket_name: str,
+    blob_prefix: str,
+    dest_dir: Path,
+    creds_path: str,
+) -> str:
+    creds = load_credentials(credentials_path=creds_path)
+    zip_path = download_dataset(dataset_version, bucket_name, blob_prefix, dest_dir, creds)
+    dataset_dir = unzip_dataset(zip_path, dest_dir)
 
     data_yaml = dataset_dir / "data.yaml"
     if not data_yaml.exists():

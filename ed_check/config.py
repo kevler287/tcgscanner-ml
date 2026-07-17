@@ -3,11 +3,11 @@ from config.project_config import ProjectConfig
 
 @dataclass
 class DefaultTrainConfig:
-    epochs:           int   = 300
+    results_dir: str = "ed_check/training_pipeline/results"
+    imgsz: tuple = (64, 192)
+    epochs:           int   = 10
     batch:            int   = 16
-    device:           int   = 0
-    amp:              bool  = True
-    optimizer:        str   = "Adam"
+    num_workers: int = 0
     lr0:              float = 0.001
 
 @dataclass
