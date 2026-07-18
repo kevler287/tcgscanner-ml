@@ -18,9 +18,9 @@ load_dotenv()
 
 BUCKET_NAME      = CONFIG.bucket.name
 PF_MODELS        = CONFIG.bucket.pf_models
-BQ_DATASET       = CONFIG.model_results_dataset.name
-MODEL_RUNS_TABLE = CONFIG.model_results_dataset.model_runs_table
-EPOCHS_TABLE     = CONFIG.model_results_dataset.training_epoch_table
+BQ_DATASET       = CONFIG.model_prefix
+MODEL_RUNS_TABLE = CONFIG.bq_model_runs
+EPOCHS_TABLE     = CONFIG.bq_training_epochs
 MODEL_PREFIX = CONFIG.model_prefix
 YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11n-seg.pt")
 

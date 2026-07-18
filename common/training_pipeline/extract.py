@@ -24,12 +24,8 @@ import yaml
 from google.cloud import storage
 from google.oauth2 import service_account
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
 logger = logging.getLogger(__name__)
-
+logger.setLevel(logging.INFO)
 
 def load_credentials(credentials_path: Path | None) -> service_account.Credentials | None:
     """Loads credentials from a service account key file, or None to fall back to ADC."""
@@ -81,14 +77,14 @@ def unzip_dataset(zip_path: Path, extract_to: Path) -> Path:
 
 
 def extract(
-    dataset_version: str,
+    file_name: str,
     bucket_name: str,
     blob_prefix: str,
     dest_dir: Path,
     creds_path: str,
 ) -> str:
     creds = load_credentials(credentials_path=creds_path)
-    zip_path = download_dataset(dataset_version, bucket_name, blob_prefix, dest_dir, creds)
+    zip_path = download_dataset(file_name, bucket_name, blob_prefix, dest_dir, creds)
     dataset_dir = unzip_dataset(zip_path, dest_dir)
     return dataset_dir
 

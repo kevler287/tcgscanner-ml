@@ -1,103 +1,122 @@
-import logging
+"""
+Evaluation script for the ResNet18 binary classifier trained with train_resnet18.py
+
+Expected folder structure under data_dir:
+    data_dir/
+        first_ed/
+            img001.jpg
+            ...
+        other_ed/
+            img002.jpg
+            ...
+"""
+
 from pathlib import Path
-import numpy as np
-from ultralytics import YOLO
-from PIL import Image, ImageDraw
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
-logger = logging.getLogger(__name__)
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from torchvision import datasets, models, transforms
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
 
-def load_ground_truth(label_path: Path, img_w: int, img_h: int) -> list:
-    masks = []
-    if not label_path.exists():
-        return masks
-    with open(label_path) as f:
-        for line in f:
-            parts = line.strip().split()
-            if len(parts) < 7:
-                continue
-            class_id = int(parts[0])
-            coords   = list(map(float, parts[1:]))
-            polygon  = [(coords[i] * img_w, coords[i+1] * img_h)
-                        for i in range(0, len(coords), 2)]
-            mask_img = Image.new("L", (img_w, img_h), 0)
-            ImageDraw.Draw(mask_img).polygon(polygon, fill=255)
-            masks.append((class_id, np.array(mask_img) > 0))
-    return masks
+def get_dataloader(data_dir, batch_size, num_workers):
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+    )
+
+    eval_transform = transforms.Compose([
+        transforms.Resize((64, 192)),
+        transforms.ToTensor(),
+        normalize,
+    ])
+
+    data_dir = Path(data_dir)
+    eval_ds = datasets.ImageFolder(data_dir, transform=eval_transform)
+
+    eval_loader = DataLoader(
+        eval_ds, batch_size=batch_size, shuffle=False,
+        num_workers=num_workers, pin_memory=True,
+    )
+
+    print(f"Classes (from folder): {eval_ds.classes}")
+    print(f"Eval set: {len(eval_ds)} images")
+
+    return eval_loader, eval_ds.classes
 
 
-def compute_iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
-    intersection = np.logical_and(mask_a, mask_b).sum()
-    union        = np.logical_or(mask_a, mask_b).sum()
-    return float(intersection / union) if union > 0 else 0.0
+def build_model(num_classes=2):
+    model = models.resnet18(weights=None)
+    in_features = model.fc.in_features
+    model.fc = nn.Linear(in_features, num_classes)
+    return model
 
 
-def evaluate(run_dir: str, data_yaml_path: str) -> dict:
-    data_yaml    = Path(data_yaml_path)
-    test_img_dir = data_yaml.parent / "images/test"
-    test_lbl_dir = data_yaml.parent / "labels/test"
+def evaluate(
+    data_dir,
+    checkpoint_path,
+    batch_size=16,
+    num_workers=0,
+):
+    """
+    Evaluate a trained ResNet18 binary classifier.
 
-    run_dir = Path(run_dir)
-    best_pt = run_dir / "weights" / "best.pt"
+    Args:
+        data_dir: path to eval dataset root, must contain one subfolder per
+                   class directly (e.g. first_ed/, other_ed/) - no train/val split
+        checkpoint_path: path to the .pt checkpoint saved by train()
+        batch_size: batch size for the eval loader
+        num_workers: dataloader worker processes
 
-    if not best_pt.exists():
-        raise FileNotFoundError(f"Training finished but best.pt not found: {best_pt}")
-    
-    model       = YOLO(str(best_pt))
-    image_paths = sorted(test_img_dir.glob("*.[jp][pn]g"))
+    Returns:
+        dict with accuracy, and per-class precision/recall/f1/support
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
 
-    if not image_paths:
-        logger.error("No images found in %s", test_img_dir)
-        return {}
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    train_classes = checkpoint["classes"]
 
-    logger.info("Evaluating %d images...", len(image_paths))
+    eval_loader, eval_classes = get_dataloader(data_dir, batch_size, num_workers)
 
-    all_ious   = []
+    # Sanity check: eval folder class order must match training class order,
+    # since the model's output indices correspond to train_classes order.
+    if eval_classes != train_classes:
+        raise ValueError(
+            f"Class mismatch between checkpoint ({train_classes}) and "
+            f"eval folder ({eval_classes}). Make sure eval subfolders are "
+            f"named identically to the training subfolders."
+        )
 
-    for img_path in image_paths:
-        img          = Image.open(img_path).convert("RGB")
-        img_w, img_h = img.size
-        label_path   = test_lbl_dir / (img_path.stem + ".txt")
-        gt_masks     = load_ground_truth(label_path, img_w, img_h)
-        result       = model(img_path, verbose=False)[0]
+    model = build_model(num_classes=len(train_classes))
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model = model.to(device)
+    model.eval()
 
-        if result.masks is None or len(result.masks) == 0:
-            continue
+    all_preds, all_labels = [], []
 
-        pred_classes   = result.boxes.cls.cpu().numpy().astype(int)
-        pred_masks_raw = result.masks.data.cpu().numpy()
+    with torch.no_grad():
+        for images, labels in eval_loader:
+            images = images.to(device)
+            outputs = model(images)
+            preds = outputs.argmax(dim=1).cpu()
+            all_preds.extend(preds.tolist())
+            all_labels.extend(labels.tolist())
 
-        for cls_id, pred_mask_small in zip(pred_classes, pred_masks_raw):
-            pred_mask = np.array(
-                Image.fromarray((pred_mask_small * 255).astype(np.uint8)).resize(
-                    (img_w, img_h), Image.NEAREST)) > 127
+    accuracy = accuracy_score(all_labels, all_preds)
+    precision, recall, f1, support = precision_recall_fscore_support(
+        all_labels, all_preds, labels=list(range(len(train_classes))), zero_division=0
+    )
 
-            best_iou = 0.0
-            for gt_cls, gt_mask in gt_masks:
-                if gt_cls == cls_id:
-                    best_iou = max(best_iou, compute_iou(pred_mask, gt_mask))
+    print(f"Accuracy: {accuracy:.4f}")
+    for i, cls in enumerate(train_classes):
+        print(f"  {cls}: precision={precision[i]:.4f} recall={recall[i]:.4f} "
+              f"f1={f1[i]:.4f} support={support[i]}")
 
-            all_ious.append(best_iou)
-
-    # Official YOLO val for precision/recall/mAP
-    val_results = model.val(data=str(data_yaml), split="test", verbose=False)
-    precision   = float(val_results.seg.p.mean()) if hasattr(val_results.seg, "p") else 0.0
-    recall      = float(val_results.seg.r.mean()) if hasattr(val_results.seg, "r") else 0.0
-
-
-    metrics = {
-        "precision": round(precision,                        4),
-        "recall":    round(recall,                           4),
-        "map50":     round(float(val_results.box.map50),     4),
-        "map50_95":  round(float(val_results.box.map),       4),
-        "min_iou":        round(float(np.min(all_ious)),          4) if all_ious else 0.0,
-        "max_iou":        round(float(np.max(all_ious)),          4) if all_ious else 0.0,
-        "avg_iou":        round(float(np.mean(all_ious)),         4) if all_ious else 0.0,
+    return {
+        "accuracy": accuracy,
+        "precision": dict(zip(train_classes, precision.tolist())),
+        "recall": dict(zip(train_classes, recall.tolist())),
+        "f1": dict(zip(train_classes, f1.tolist())),
+        "support": dict(zip(train_classes, support.tolist())),
     }
-
-    logger.info("Evaluation complete: %s", metrics)
-    return metrics

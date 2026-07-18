@@ -1,177 +1,150 @@
+"""
+Generic upload helpers for GCS (weights) and BigQuery (table rows).
+"""
+
 import logging
-from datetime import datetime, timezone
-import os
 from pathlib import Path
-from dotenv import load_dotenv
+
 from google.cloud import bigquery, storage
 from google.oauth2 import service_account
 
-from card_seg.config import CONFIG
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
-load_dotenv()
+import re
 
-BUCKET_NAME      = CONFIG.bucket.name
-PF_MODELS        = CONFIG.bucket.pf_models
-BQ_DATASET       = CONFIG.model_results_dataset.name
-MODEL_RUNS_TABLE = CONFIG.model_results_dataset.model_runs_table
-EPOCHS_TABLE     = CONFIG.model_results_dataset.training_epoch_table
-MODEL_PREFIX = CONFIG.model_prefix
-YOLO_MODEL = os.getenv("YOLO_MODEL", "yolo11n-seg.pt")
+import re
 
-def count_dataset_images(data_yaml: str) -> int:
-    dataset_dir = Path(data_yaml).parent
-    return sum(
-        1
-        for split in ("train", "val", "test")
-        for _ in (dataset_dir / "images" / split).glob("*.jpg")
-    )
+import re
 
-def upload_weights(run_dir: Path, model_version: str, creds: service_account.Credentials) -> dict:
-    best_pt = run_dir / "weights" / "best.pt"
-    last_pt = run_dir / "weights" / "last.pt"
+def get_model_version(
+    dataset_version: str,
+    testset_version: str,
+    bucket_name: str,
+    model_prefix: str,
+    creds: service_account.Credentials,
+) -> str:
+    """
+    Build the next model_version for a given dataset_version/testset_version
+    combination, in the form "{testset_num}.{dataset_num}.{config_version}"
+    (e.g. dataset_version="v1", testset_version="t2" -> "2.1.0").
 
-    if not best_pt.exists():
-        raise FileNotFoundError(f"best.pt not found. Aborting Pipeline.")
-    
+    Looks for existing files "{prefix}*.pt" directly under
+    gs://bucket_name/model_prefix/, takes the highest existing
+    config_version, and increments it by 1. Starts at 0 if none exist.
+
+    Expects files stored as gs://bucket_name/model_prefix/{model_version}.pt
+    e.g. "models/ed_check/1.1.0.pt".
+    """
+    dataset_num = re.sub(r"\D", "", dataset_version)
+    testset_num = re.sub(r"\D", "", testset_version)
+    prefix = f"{testset_num}.{dataset_num}."
+    full_prefix = f"{model_prefix.rstrip('/')}/{prefix}"
+
     client = storage.Client(credentials=creds)
-    bucket = client.bucket(BUCKET_NAME)
+    blobs = client.list_blobs(bucket_name, prefix=full_prefix)
 
-    blob_prefix = PF_MODELS + f"{model_version}/"
+    config_versions = []
+    for blob in blobs:
+        filename = blob.name.rsplit("/", 1)[-1]
+        if not filename.endswith(".pt"):
+            continue
+        version_str = filename[:-len(".pt")]
+        suffix = version_str[len(prefix):]
+        if suffix.isdigit():
+            config_versions.append(int(suffix))
 
-    if bucket.blob(blob_prefix + "best.pt").exists():
-        raise FileExistsError(
-            f"Model {model_version} already exists at gs://{BUCKET_NAME}/{blob_prefix}"
-        )
+    next_config_version = max(config_versions, default=-1) + 1
+    return f"{prefix}{next_config_version}"
 
-    paths = {}
-    for local_path, name in [(best_pt, "best.pt"), (last_pt, "last.pt")]:
+
+def upload_weights(
+    files: dict[str, Path],
+    bucket_name: str,
+    blob_prefix: str,
+    creds: service_account.Credentials,
+    overwrite: bool = False,
+) -> dict[str, str]:
+    """
+    Upload local files to a GCS bucket under a given prefix.
+
+    Args:
+        files: mapping of {blob_name: local_path}, e.g. {"best.pt": run_dir / "weights" / "best.pt"}
+        bucket_name: target GCS bucket
+        blob_prefix: prefix under which files are stored, e.g. "models/v1/"
+                      (trailing slash recommended, will be added if missing)
+        creds: service account credentials
+        overwrite: if False, raises if any target blob already exists
+
+    Returns:
+        dict of {blob_name: "gs://bucket/path"} for all uploaded files
+    """
+    if not blob_prefix.endswith("/"):
+        blob_prefix += "/"
+
+    client = storage.Client(credentials=creds)
+    bucket = client.bucket(bucket_name)
+
+    if not overwrite:
+        for name in files:
+            blob_path = blob_prefix + name
+            if bucket.blob(blob_path).exists():
+                raise FileExistsError(
+                    f"Blob already exists at gs://{bucket_name}/{blob_path}"
+                )
+
+    uploaded = {}
+    for name, local_path in files.items():
+        local_path = Path(local_path)
+        if not local_path.exists():
+            raise FileNotFoundError(f"{local_path} not found. Aborting upload.")
+
         blob_path = blob_prefix + name
-        logger.info("Uploading %s → gs://%s/%s", local_path, BUCKET_NAME, blob_path)
-        bucket.blob(blob_path).upload_from_filename(local_path)
-        paths[name] = f"gs://{BUCKET_NAME}/{blob_path}"
+        logger.info("Uploading %s -> gs://%s/%s", local_path, bucket_name, blob_path)
+        bucket.blob(blob_path).upload_from_filename(str(local_path))
+        uploaded[name] = f"gs://{bucket_name}/{blob_path}"
 
     logger.info("Weights upload complete.")
-    return paths
+    return uploaded
 
 
-def insert_model_run(
-    model_version: str,
-    dataset_version: str,
-    dataset_size: int,
-    eval_metrics: dict,
-    creds: service_account.Credentials
-):
-    client = bigquery.Client(credentials=creds)
-    table_id = f"{client.project}.{BQ_DATASET}.{MODEL_RUNS_TABLE}"
+def upload_table_rows(
+    bq_datatset: str, 
+    bq_table: str,
+    rows: list[dict],
+    creds: service_account.Credentials,
+) -> None:
+    """
+    Insert rows into a BigQuery table.
 
-    transform_cfg = CONFIG.transform
-    yolo_cfg = CONFIG.yolo_seg
-
-    row = {
-        "model_prefix":     MODEL_PREFIX,
-        "model_version":    model_version,
-        "timestamp":        datetime.now(timezone.utc).isoformat(),
-        "class_names":      ["ygo_card"],
-        "dataset_version":  dataset_version,
-        "dataset_size":     dataset_size,
-        "samples_per_card": transform_cfg.samples_per_card,
-        "train_split":      1 - transform_cfg.val_split - transform_cfg.test_split,
-        "val_split":        transform_cfg.val_split,
-        "test_split":       transform_cfg.test_split,
-        "empty_split":      transform_cfg.empty_split,
-        "pretrained_model": YOLO_MODEL,
-        "epochs_planned":   yolo_cfg.epochs,
-        "batch_size":       yolo_cfg.batch,
-        "learning_rate":    yolo_cfg.lr0,
-        "optimizer":        yolo_cfg.optimizer,
-        "amp":              yolo_cfg.amp,
-        "precision":   eval_metrics.get("precision"),
-        "recall":      eval_metrics.get("recall"),
-        "map50":       eval_metrics.get("map50"),
-        "map50_95":    eval_metrics.get("map50_95"),
-        "min_iou":          eval_metrics.get("min_iou"),
-        "max_iou":          eval_metrics.get("max_iou"),
-        "avg_iou":          eval_metrics.get("avg_iou"),
-    }
-
-    errors = client.insert_rows_json(table_id, [row])
-    if errors:
-        raise RuntimeError(f"Failed to insert model_run row: {errors}")
-
-    logger.info("Inserted model_run row for %s", model_version)
-
-
-def insert_training_epochs(model_version: str, run_dir: Path, creds: service_account.Credentials):
-    epoch_metrics = []
-    # results.csv in run_dir holds per-epoch history
-    csv_path = run_dir / "results.csv"
-    if csv_path.exists():
-        import csv as csv_module
-        with open(csv_path) as f:
-            reader = csv_module.DictReader(f)
-            for row in reader:
-                epoch_metrics.append({k.strip(): v.strip() for k, v in row.items()})
-    
-    if not epoch_metrics:
-        logger.warning("No epoch metrics to insert, skipping.")
+    Args:
+        table_id: fully qualified table id, e.g. "project.dataset.table"
+        rows: list of JSON-serializable dicts, one per row
+        creds: service account credentials
+    """
+    if not rows:
+        logger.warning("No rows to insert into %s, skipping.", bq_table)
         return
 
     client = bigquery.Client(credentials=creds)
-    table_id = f"{client.project}.{BQ_DATASET}.{EPOCHS_TABLE}"
-
-    rows = []
-    for row in epoch_metrics:
-        rows.append({
-            "model_prefix":     MODEL_PREFIX,
-            "model_version":    model_version,
-            "epoch":            int(float(row.get("epoch", 0))),
-            "train_box_loss":   _safe_float(row.get("train/box_loss")),
-            "train_seg_loss":   _safe_float(row.get("train/seg_loss")),
-            "train_cls_loss":   _safe_float(row.get("train/cls_loss")),
-            "train_dfl_loss":   _safe_float(row.get("train/dfl_loss")),
-            "val_box_loss":     _safe_float(row.get("val/box_loss")),
-            "val_seg_loss":     _safe_float(row.get("val/seg_loss")),
-            "val_cls_loss":     _safe_float(row.get("val/cls_loss")),
-            "val_dfl_loss":     _safe_float(row.get("val/dfl_loss")),
-            "val_precision":    _safe_float(row.get("metrics/precision(M)")),
-            "val_recall":       _safe_float(row.get("metrics/recall(M)")),
-            "val_map50":        _safe_float(row.get("metrics/mAP50(M)")),
-            "val_map50_95":     _safe_float(row.get("metrics/mAP50-95(M)")),
-        })
-
-    errors = client.insert_rows_json(table_id, rows)
+    errors = client.insert_rows_json(f"{client.project}.{bq_datatset}.{bq_table}", rows)
     if errors:
-        raise RuntimeError(f"Failed to insert training_epochs rows: {errors}")
+        raise RuntimeError(f"Failed to insert rows into {bq_table}: {errors}")
 
-    logger.info("Inserted %d epoch rows for %s", len(rows), model_version)
+    logger.info("Inserted %d rows into %s", len(rows), bq_table)
 
 
-def _safe_float(value):
+def safe_float(value):
+    """Convert value to float, returning None if conversion fails."""
     try:
         return float(value)
     except (TypeError, ValueError):
         return None
 
 
-def load(
-    model_version: str,
-    dataset_version: str,
-    data_yaml: int,
-    run_dir: str,
-    eval_metrics: dict,
-    creds: service_account.Credentials
-):
-    run_dir = Path(run_dir)
-    weight_paths = upload_weights(run_dir, model_version, creds)
-    dataset_size = count_dataset_images(data_yaml)
-    insert_model_run(model_version, dataset_version, dataset_size, eval_metrics, creds)
-    insert_training_epochs(model_version, run_dir, creds)
-
-    logger.info("Load complete. Weights at %s", weight_paths)
-    return weight_paths
+def safe_int(value):
+    """Convert value to int, returning None if conversion fails."""
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
