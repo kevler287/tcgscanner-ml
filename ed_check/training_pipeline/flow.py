@@ -43,7 +43,7 @@ def train(dataset_version: str):
 
 @task(name="Evaluate")
 def evaluate(testset_version: str):
-    """Generate synthetic YOLO training dataset from raw cards and backgrounds."""
+    """Evaluate model on test set."""
     from ed_check.training_pipeline.evaluate import evaluate
     metrics = evaluate(
         data_dir=WORK_DIR / testset_version,
@@ -66,8 +66,8 @@ def load(dataset_version: str, testset_version: str, eval_metrics: dict):
 
 @flow(name="Edition Checker Training Pipeline")
 def training_pipeline(dataset_version: str, testset_version: str):
-    # extract(dataset_version, testset_version)
-    # train(dataset_version)
+    extract(dataset_version, testset_version)
+    train(dataset_version)
     eval_metrics = evaluate(testset_version)
     load(
         dataset_version=dataset_version,
@@ -79,7 +79,7 @@ def training_pipeline(dataset_version: str, testset_version: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perfrom training on selected dataset")
     parser.add_argument("--data_version", required=True, help="Dataset version e.g. v1")
-    parser.add_argument("--test_version", required=True, help="Dataset version e.g. v1")
+    parser.add_argument("--test_version", required=True, help="Testset version e.g. t1")
     args = parser.parse_args()
 
     training_pipeline(dataset_version=args.data_version, testset_version=args.test_version)
