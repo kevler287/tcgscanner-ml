@@ -12,6 +12,7 @@ Expected folder structure under data_dir:
 """
 
 import logging
+import os
 from pathlib import Path
 
 import torch
@@ -24,6 +25,8 @@ from ed_check.src.config import CONFIG
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+BATCH_SIZE = int(os.environ.get("batch", CONFIG.train_cfg.batch))
+NUM_WORKERS = int(os.environ.get("workers", CONFIG.train_cfg.num_workers))
 
 def get_dataloader(data_dir: Path):
     normalize = transforms.Normalize(
@@ -39,8 +42,8 @@ def get_dataloader(data_dir: Path):
     eval_ds = datasets.ImageFolder(data_dir, transform=eval_transform)
 
     eval_loader = DataLoader(
-        eval_ds, batch_size=CONFIG.train_cfg.batch, shuffle=False,
-        num_workers=CONFIG.train_cfg.num_workers, pin_memory=True,
+        eval_ds, batch_size=BATCH_SIZE, shuffle=False,
+        num_workers=NUM_WORKERS, pin_memory=True,
     )
 
     logger.info(f"Classes (from folder): {eval_ds.classes}")

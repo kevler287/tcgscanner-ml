@@ -23,6 +23,7 @@ Outputs (written into dest_dir):
 
 import csv
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -36,6 +37,10 @@ from ed_check.src.config import CONFIG
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+EPOCHS = int(os.environ.get("epochs", CONFIG.train_cfg.epochs))
+BATCH_SIZE = int(os.environ.get("batch", CONFIG.train_cfg.batch))
+NUM_WORKERS = int(os.environ.get("workers", CONFIG.train_cfg.num_workers))
+LEARNING_RATE = float(os.environ.get("lr", CONFIG.train_cfg.lr0))
 
 def get_dataloaders(data_dir: Path):
     # ImageNet normalization since we're using pretrained weights
@@ -59,12 +64,12 @@ def get_dataloaders(data_dir: Path):
     val_ds = datasets.ImageFolder(data_dir / "val", transform=val_transform)
 
     train_loader = DataLoader(
-        train_ds, batch_size=CONFIG.train_cfg.batch, shuffle=True,
-        num_workers=CONFIG.train_cfg.num_workers, pin_memory=True,
+        train_ds, batch_size=BATCH_SIZE, shuffle=True,
+        num_workers=NUM_WORKERS, pin_memory=True,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=CONFIG.train_cfg.batch, shuffle=False,
-        num_workers=CONFIG.train_cfg.num_workers, pin_memory=True,
+        val_ds, batch_size=BATCH_SIZE, shuffle=False,
+        num_workers=NUM_WORKERS, pin_memory=True,
     )
 
     logger.info(f"Classes: {train_ds.classes}")
@@ -130,7 +135,7 @@ def train(data_dir: Path, results_dir: Path):
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()), lr=CONFIG.train_cfg.lr0
+        filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE
     )
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=2
@@ -145,7 +150,7 @@ def train(data_dir: Path, results_dir: Path):
             "val_loss", "val_acc", "lr", "duration_sec",
         ])
 
-        for epoch in range(1, CONFIG.train_cfg.epochs + 1):
+        for epoch in range(1, EPOCHS + 1):
             t0 = time.time()
 
             train_loss, train_acc = run_epoch(
@@ -160,7 +165,7 @@ def train(data_dir: Path, results_dir: Path):
             current_lr = optimizer.param_groups[0]["lr"]
 
             logger.info(
-                f"Epoch {epoch:02d}/{CONFIG.train_cfg.epochs} | "
+                f"Epoch {epoch:02d}/{EPOCHS} | "
                 f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
                 f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} | "
                 f"{dt:.1f}s"

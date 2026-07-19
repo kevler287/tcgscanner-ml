@@ -6,7 +6,7 @@ class DefaultTrainConfig:
     imgsz: tuple = (64, 192)
     epochs:           int   = 3
     batch:            int   = 16
-    num_workers: int = 0
+    num_workers: int = 8
     lr0:              float = 0.001
 
 @dataclass
