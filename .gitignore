@@ -1,7 +1,7 @@
 credentials/
 */data_pipeline/output/
 */training_pipeline/results/
-*/data_pipeline/v?/
+*/*/data_pipeline/v?/
 runs/
 yolo11n-seg.pt
 

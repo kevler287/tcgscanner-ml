@@ -39,13 +39,13 @@ def upload_to_gcs(bucket_name: str, zip_path: Path, dest_prefix: str) -> str:
     return f"gs://{bucket_name}/{blob_path}"
 
 
-def load(bucket_name: str, source_dir: str, dest_dir: str):
-    source_dir = Path(source_dir)
+def load(bucket_name: str, src_dir: str, dest_dir: str):
+    src_dir = Path(src_dir)
 
-    if not source_dir.exists():
-        raise FileNotFoundError(f"Output dir not found: {source_dir}")
+    if not src_dir.exists():
+        raise FileNotFoundError(f"Output dir not found: {src_dir}")
 
-    zip_path = zip_dataset(source_dir)
+    zip_path = zip_dataset(src_dir)
     gcs_path = upload_to_gcs(bucket_name, zip_path, dest_dir)
 
     logger.info("Done. Dataset available at %s", gcs_path)

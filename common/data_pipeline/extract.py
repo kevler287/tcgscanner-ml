@@ -47,9 +47,9 @@ def download_from_gcs(bucket, prefix: str, local_dir: Path):
 
     logger.info("Download complete: %d files → %s", len(blobs), local_dir)
 
-def main(bucket_name: str, prefixes: List[str]):
+def main(bucket_name: str, prefixes: List[str], dest_dir: Path):
     client = storage.Client()
     bucket = client.bucket(bucket_name=bucket_name)
 
     for prefix in prefixes:
-        download_from_gcs(bucket, prefix, LOCAL_DATA_DIR / prefix)
+        download_from_gcs(bucket, prefix, dest_dir)
