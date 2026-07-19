@@ -69,9 +69,9 @@ def build_model_run_row(
 
 
 def load(
-    data_version: str,
-    test_version: str,
-    run_dir: str,
+    model_version: str,
+    weights_path: Path,
+    train_csv_path: Path,
     eval_metrics: dict,
     creds: service_account.Credentials,
 ) -> dict:
@@ -80,33 +80,23 @@ def load(
 
     Args:
         model_version: unique identifier for this training run
-        run_dir: directory produced by train(), must contain best.pt and metrics.csv
+        weights_path: Path to best.pt,
+        train_csv_path: Path to csv file with metrics per epoch,
         eval_metrics: dict returned by evaluate() (accuracy, precision, recall, f1, support)
         creds: service account credentials
 
     Returns:
         dict with "weight_paths" (gs:// paths) and "num_epochs"
     """
-    run_dir = Path(run_dir)
-    checkpoint_path = run_dir / "best.pt"
-    metrics_csv = run_dir / "metrics.csv"
-
-    model_version = get_model_version(
-        dataset_version=data_version,
-        testset_version=test_version,
-        bucket_name=CONFIG.bucket.name,
-        model_prefix=CONFIG.bucket.pf_models,
-        creds=creds
-    )
 
     upload_weights(
-        files={f"{model_version}.pt": checkpoint_path},
+        files={f"{model_version}.pt": weights_path},
         bucket_name=CONFIG.bucket.name,
         blob_prefix=CONFIG.bucket.pf_models,
         creds=creds,
     )
 
-    epoch_rows = read_training_epochs(metrics_csv, model_version)
+    epoch_rows = read_training_epochs(train_csv_path, model_version)
     upload_table_rows(CONFIG.model_prefix, CONFIG.bq_training_epochs, epoch_rows, creds)
 
     model_run_row = build_model_run_row(

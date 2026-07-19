@@ -7,6 +7,7 @@ class TCGBucket:
     pf_raw:              str = "raw/"
     pf_datasets:         str = "datasets/"
     pf_models:           str = "models/"
+    pf_logs:             str = "logs/"
 
 @dataclass
 class ProjectConfig(ABC):

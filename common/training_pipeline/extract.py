@@ -22,24 +22,16 @@ from pathlib import Path
 
 import yaml
 from google.cloud import storage
-from google.oauth2 import service_account
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def load_credentials(credentials_path: Path | None) -> service_account.Credentials | None:
-    """Loads credentials from a service account key file, or None to fall back to ADC."""
-    if credentials_path is None:
-        return None
-    return service_account.Credentials.from_service_account_file(str(credentials_path))
-
 
 def download_dataset(
     dataset_version: str,
-    bucket_name: str,
+    bucket: storage.Bucket,
     blob_prefix: str,
     dest_dir: Path,
-    creds: service_account.Credentials | None,
 ) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
     zip_path = dest_dir / f"{dataset_version}.zip"
@@ -48,16 +40,13 @@ def download_dataset(
         logger.info("Zip already present at %s, skipping download.", zip_path)
         return zip_path
 
-    client = storage.Client(credentials=creds)
-    bucket = client.bucket(bucket_name)
-
     blob_path = f"{blob_prefix}{dataset_version}.zip"
     blob = bucket.blob(blob_path)
 
     if not blob.exists():
-        raise FileNotFoundError(f"Dataset not found: gs://{bucket_name}/{blob_path}")
+        raise FileNotFoundError(f"Dataset not found: gs://{bucket.name}/{blob_path}")
 
-    logger.info("Downloading gs://%s/%s -> %s", bucket_name, blob_path, zip_path)
+    logger.info("Downloading gs://%s/%s -> %s", bucket.name, blob_path, zip_path)
     blob.download_to_filename(str(zip_path))
     logger.info("Download complete (%.1f MB)", zip_path.stat().st_size / 1024 / 1024)
 
@@ -78,25 +67,21 @@ def unzip_dataset(zip_path: Path, extract_to: Path) -> Path:
 
 def extract(
     file_name: str,
-    bucket_name: str,
+    bucket: storage.Bucket,
     blob_prefix: str,
     dest_dir: Path,
-    creds_path: str,
 ) -> str:
-    creds = load_credentials(credentials_path=creds_path)
-    zip_path = download_dataset(file_name, bucket_name, blob_prefix, dest_dir, creds)
+    zip_path = download_dataset(file_name, bucket, blob_prefix, dest_dir)
     dataset_dir = unzip_dataset(zip_path, dest_dir)
     return dataset_dir
 
 def extract_yolo(
     dataset_version: str,
-    bucket_name: str,
+    bucket: storage.Bucket,
     blob_prefix: str,
     dest_dir: Path,
-    creds_path: str,
 ) -> str:
-    creds = load_credentials(credentials_path=creds_path)
-    zip_path = download_dataset(dataset_version, bucket_name, blob_prefix, dest_dir, creds)
+    zip_path = download_dataset(dataset_version, bucket, blob_prefix, dest_dir)
     dataset_dir = unzip_dataset(zip_path, dest_dir)
 
     data_yaml = dataset_dir / "data.yaml"

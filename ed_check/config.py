@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from config.project_config import ProjectConfig
+from common.config import ProjectConfig
 
 @dataclass
 class DefaultTrainConfig:
@@ -33,5 +33,6 @@ class EditionCheckerConfig(ProjectConfig):
         self.pf_test_data = self.bucket.pf_datasets + "test_data/"
         self.bucket.pf_models   = self.bucket.pf_models   + self.model_prefix + "/"
         self.pf_ed_types = self.bucket.pf_raw + "ygo_ed_types/"
+        self.bucket.pf_logs = self.bucket.pf_logs + self.model_prefix + "/"
 
 CONFIG = EditionCheckerConfig()

@@ -11,6 +11,7 @@ Expected folder structure under data_dir:
             ...
 """
 
+import logging
 from pathlib import Path
 
 import torch
@@ -18,29 +19,32 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+from ed_check.config import CONFIG
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
-def get_dataloader(data_dir, batch_size, num_workers):
+def get_dataloader(data_dir: Path):
     normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
     )
 
     eval_transform = transforms.Compose([
-        transforms.Resize((64, 192)),
+        transforms.Resize(CONFIG.train_cfg.imgsz),
         transforms.ToTensor(),
         normalize,
     ])
 
-    data_dir = Path(data_dir)
     eval_ds = datasets.ImageFolder(data_dir, transform=eval_transform)
 
     eval_loader = DataLoader(
-        eval_ds, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True,
+        eval_ds, batch_size=CONFIG.train_cfg.batch, shuffle=False,
+        num_workers=CONFIG.train_cfg.num_workers, pin_memory=True,
     )
 
-    print(f"Classes (from folder): {eval_ds.classes}")
-    print(f"Eval set: {len(eval_ds)} images")
+    logger.info(f"Classes (from folder): {eval_ds.classes}")
+    logger.info(f"Eval set: {len(eval_ds)} images")
 
     return eval_loader, eval_ds.classes
 
@@ -52,12 +56,7 @@ def build_model(num_classes=2):
     return model
 
 
-def evaluate(
-    data_dir,
-    checkpoint_path,
-    batch_size=16,
-    num_workers=0,
-):
+def evaluate(data_dir: Path, checkpoint_path: Path):
     """
     Evaluate a trained ResNet18 binary classifier.
 
@@ -65,19 +64,17 @@ def evaluate(
         data_dir: path to eval dataset root, must contain one subfolder per
                    class directly (e.g. first_ed/, other_ed/) - no train/val split
         checkpoint_path: path to the .pt checkpoint saved by train()
-        batch_size: batch size for the eval loader
-        num_workers: dataloader worker processes
 
     Returns:
         dict with accuracy, and per-class precision/recall/f1/support
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+    logger.info(f"Device: {device}")
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
     train_classes = checkpoint["classes"]
 
-    eval_loader, eval_classes = get_dataloader(data_dir, batch_size, num_workers)
+    eval_loader, eval_classes = get_dataloader(data_dir)
 
     # Sanity check: eval folder class order must match training class order,
     # since the model's output indices correspond to train_classes order.
@@ -108,9 +105,9 @@ def evaluate(
         all_labels, all_preds, labels=list(range(len(train_classes))), zero_division=0
     )
 
-    print(f"Accuracy: {accuracy:.4f}")
+    logger.info(f"Accuracy: {accuracy:.4f}")
     for i, cls in enumerate(train_classes):
-        print(f"  {cls}: precision={precision[i]:.4f} recall={recall[i]:.4f} "
+        logger.info(f"  {cls}: precision={precision[i]:.4f} recall={recall[i]:.4f} "
               f"f1={f1[i]:.4f} support={support[i]}")
 
     return {

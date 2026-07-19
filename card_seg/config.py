@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from config.project_config import ProjectConfig
+from common.config import ProjectConfig
 
 @dataclass
 class DefaultTrainConfig:

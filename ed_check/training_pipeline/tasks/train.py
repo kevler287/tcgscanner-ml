@@ -22,6 +22,7 @@ Outputs (written into dest_dir):
 """
 
 import csv
+import logging
 import time
 from pathlib import Path
 
@@ -32,8 +33,11 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
 from ed_check.config import CONFIG
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
-def get_dataloaders(data_dir):
+
+def get_dataloaders(data_dir: Path):
     # ImageNet normalization since we're using pretrained weights
     normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
@@ -51,7 +55,6 @@ def get_dataloaders(data_dir):
         normalize,
     ])
 
-    data_dir = Path(data_dir)
     train_ds = datasets.ImageFolder(data_dir / "train", transform=train_transform)
     val_ds = datasets.ImageFolder(data_dir / "val", transform=val_transform)
 
@@ -64,8 +67,8 @@ def get_dataloaders(data_dir):
         num_workers=CONFIG.train_cfg.num_workers, pin_memory=True,
     )
 
-    print(f"Classes: {train_ds.classes}")
-    print(f"Train: {len(train_ds)} images | Val: {len(val_ds)} images")
+    logger.info(f"Classes: {train_ds.classes}")
+    logger.info(f"Train: {len(train_ds)} images | Val: {len(val_ds)} images")
 
     return train_loader, val_loader, train_ds.classes
 
@@ -105,25 +108,24 @@ def run_epoch(model, loader, criterion, optimizer, device, train=True):
     return total_loss / total, correct / total
 
 
-def train(data_dir):
+def train(data_dir: Path, results_dir: Path):
     """
     Train a ResNet18 binary classifier.
 
     Args:
         data_dir: path to dataset root, must contain train/ and val/ subfolders
                    with one folder per class (e.g. first_ed/, other_ed/)
+        results_dir: destination for weights and epochs csv
     """
-    results_dir = Path(CONFIG.train_cfg.results_dir)
-    results_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_path = results_dir / "best.pt"
-    metrics_path = results_dir / "metrics.csv"
+    weigths_path = results_dir / "best.pt"
+    train_csv_path = results_dir / "metrics.csv"
 
     train_loader, val_loader, classes = get_dataloaders(data_dir)
 
     model = build_model(num_classes=len(classes))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+    logger.info(f"Device: {device}")
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
@@ -136,7 +138,7 @@ def train(data_dir):
 
     best_val_acc = 0.0
 
-    with open(metrics_path, "w", newline="") as f:
+    with open(train_csv_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
             "epoch", "train_loss", "train_acc",
@@ -157,7 +159,7 @@ def train(data_dir):
             dt = time.time() - t0
             current_lr = optimizer.param_groups[0]["lr"]
 
-            print(
+            logger.info(
                 f"Epoch {epoch:02d}/{CONFIG.train_cfg.epochs} | "
                 f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
                 f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} | "
@@ -176,9 +178,9 @@ def train(data_dir):
                     "model_state_dict": model.state_dict(),
                     "classes": classes,
                     "val_acc": val_acc,
-                }, checkpoint_path)
-                print(f"  -> new best model saved ({checkpoint_path}), val_acc={val_acc:.4f}")
+                }, weigths_path)
+                logger.info(f"  -> new best model saved ({weigths_path}), val_acc={val_acc:.4f}")
 
-    print(f"\nDone. Best val_acc: {best_val_acc:.4f}")
-    print(f"Metrics written to {metrics_path}")
-    return best_val_acc
+    logger.info(f"\nDone. Best val_acc: {best_val_acc:.4f}")
+    logger.info(f"Metrics written to {train_csv_path}")
+    return weigths_path, train_csv_path
