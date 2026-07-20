@@ -63,7 +63,7 @@ def main():
         )
         extract(
             file_name=testset_version,
-            bucket_name=bucket, 
+            bucket=bucket, 
             blob_prefix=CONFIG.pf_test_data,
             dest_dir=dirs.dataset / testset_version,
         )
