@@ -15,15 +15,11 @@ logger.setLevel(logging.INFO)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-LOCAL_CARDS_DIR  = Path(os.getenv("LOCAL_CARDS_DIR"))
-LOCAL_BG_DIR     = Path(os.getenv("LOCAL_BG_DIR"))
-OUTPUT_DIR       = CONFIG.transform.output_dir
 SAMPLES_PER_CARD = CONFIG.transform.samples_per_card
 RANDOM_SEED      = CONFIG.random_seed
 BACKGROUND_SIZE = CONFIG.transform.background_size
 MAX_ANGLE_DEG   = CONFIG.transform.max_angle_deg
 VAL_SPLIT       = CONFIG.transform.val_split
-TEST_SPLIT      = CONFIG.transform.test_split
 EMPTY_SPLIT     = CONFIG.transform.empty_split
 
 random.seed(RANDOM_SEED)
@@ -169,26 +165,30 @@ def generate_yolo_label(corners, offset, bg_size):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def main():
-    card_paths = list(Path(LOCAL_CARDS_DIR).rglob("*.jpg")) + \
-                 list(Path(LOCAL_CARDS_DIR).rglob("*.jpeg")) + \
-                 list(Path(LOCAL_CARDS_DIR).rglob("*.png"))
+def main(
+    cards_dir: Path,
+    bg_dir: Path,
+    dest_dir: Path
+):
+    card_paths = list(cards_dir.rglob("*.jpg")) + \
+                 list(cards_dir.rglob("*.jpeg")) + \
+                 list(cards_dir.rglob("*.png"))
 
-    bg_paths = load_background_paths(LOCAL_BG_DIR)
+    bg_paths = load_background_paths(bg_dir)
 
     empty_count    = int(len(card_paths) * SAMPLES_PER_CARD * EMPTY_SPLIT)
     expected_total = len(card_paths) * SAMPLES_PER_CARD + empty_count
 
-    if is_transform_done(Path(OUTPUT_DIR), expected_total):
+    if is_transform_done(dest_dir, expected_total):
         return
 
-    for split in ("train", "val", "test"):
-        (Path(OUTPUT_DIR) / "images" / split).mkdir(parents=True, exist_ok=True)
-        (Path(OUTPUT_DIR) / "labels" / split).mkdir(parents=True, exist_ok=True)
+    for split in ("train", "val"):
+        (dest_dir / "images" / split).mkdir(parents=True, exist_ok=True)
+        (dest_dir / "labels" / split).mkdir(parents=True, exist_ok=True)
 
-    (Path(OUTPUT_DIR) / "classes.txt").write_text("ygo_card\n")
-    (Path(OUTPUT_DIR) / "data.yaml").write_text(
-        f"path: {Path(OUTPUT_DIR).resolve()}\n"
+    (dest_dir / "classes.txt").write_text("ygo_card\n")
+    (dest_dir / "data.yaml").write_text(
+        f"path: \n"
         f"train: images/train/\n"
         f"val: images/val/\n"
         f"test: images/test/\n"
@@ -200,13 +200,8 @@ def main():
 
     random.shuffle(card_paths)
     val_count  = int(len(card_paths) * VAL_SPLIT)
-    test_count = int(len(card_paths) * TEST_SPLIT)
     val_cards  = set(str(p) for p in card_paths[:val_count])
-    test_cards = set(str(p) for p in card_paths[val_count:val_count + test_count])
 
-    logger.info("Found %d cards (%d train / %d val / %d test), %d backgrounds",
-                len(card_paths), len(card_paths) - val_count - test_count,
-                val_count, test_count, len(bg_paths))
     logger.info("Generating %d samples per card + %d empty → %d total",
                 SAMPLES_PER_CARD, empty_count, expected_total)
 
@@ -220,8 +215,6 @@ def main():
 
             if str(card_path) in val_cards:
                 split = "val"
-            elif str(card_path) in test_cards:
-                split = "test"
             else:
                 split = "train"
 
@@ -246,8 +239,8 @@ def main():
                 label = generate_yolo_label(corners, (ox, oy), BACKGROUND_SIZE)
 
                 stem = f"{card_path.stem}_{i:04d}"
-                cv2.imwrite(str(Path(OUTPUT_DIR) / "images" / split / f"{stem}.jpg"), composite)
-                (Path(OUTPUT_DIR) / "labels" / split / f"{stem}.txt").write_text(label + "\n")
+                cv2.imwrite(str(dest_dir / "images" / split / f"{stem}.jpg"), composite)
+                (dest_dir / "labels" / split / f"{stem}.txt").write_text(label + "\n")
 
                 pbar.update(1)
 
@@ -256,11 +249,11 @@ def main():
             bg = load_random_background(bg_paths, BACKGROUND_SIZE)
             stem  = f"empty_{i:04d}"
             split = "train"  # all empty samples go to train
-            cv2.imwrite(str(Path(OUTPUT_DIR) / "images" / split / f"{stem}.jpg"), bg)
-            (Path(OUTPUT_DIR) / "labels" / split / f"{stem}.txt").write_text("")
+            cv2.imwrite(str(dest_dir / "images" / split / f"{stem}.jpg"), bg)
+            (dest_dir / "labels" / split / f"{stem}.txt").write_text("")
             pbar.update(1)
 
-    logger.info("Done. Output: %s", OUTPUT_DIR)
+    logger.info("Done. Output: %s", str(dest_dir))
 
 
 def is_transform_done(output_dir: Path, expected_total: int) -> bool:

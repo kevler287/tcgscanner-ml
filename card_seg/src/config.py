@@ -18,7 +18,6 @@ class DataFlowConfig:
     max_angle_deg:    int   = 10
     samples_per_card: int   = 3
     val_split:        float = 0.05
-    test_split:       float = 0.05
     empty_split:      float = 0.0
 
 
@@ -33,7 +32,7 @@ class CardSegConfig(ProjectConfig):
     def __post_init__(self):
         self.bucket.pf_datasets = self.bucket.pf_datasets + self.model_prefix + "/"
         self.bucket.pf_models   = self.bucket.pf_models   + self.model_prefix + "/"
-        self.pf_ygo_cards = self.bucket.pf_raw + "ygo_cards/"
-        self.pf_bg = self.bucket.pf_raw + "backgrounds/"
+        self.pf_ygo_cards = self.bucket.pf_raw + "ygo_cards.zip"
+        self.pf_bg = self.bucket.pf_raw + "backgrounds.zip"
 
 CONFIG = CardSegConfig()

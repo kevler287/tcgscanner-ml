@@ -1,38 +1,60 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 from prefect import flow, task
+from card_seg.src.config import CONFIG
+
+load_dotenv()
+
+WORK_DIR = Path(os.environ["LOCAL_DATA_DIR"])
+TRANSFORM_TO = WORK_DIR / "datasets" / CONFIG.model_prefix
 
 @task(name="Extract")
 def extract():
     """Download cards and backgrounds from GCS to local cache."""
-    from card_seg.src.data_pipeline.tasks.extract import main as run_extract
-    run_extract()
-
+    from common.data_pipeline.extract import main as run_extract
+    run_extract(
+        bucket_name=CONFIG.bucket.name, 
+        prefixes=[CONFIG.pf_ygo_cards, CONFIG.pf_bg],
+        dest_dir=WORK_DIR
+    )
 
 @task(name="Transform")
 def transform():
     """Generate synthetic YOLO training dataset from raw cards and backgrounds."""
-    from card_seg.src.data_pipeline.tasks.transform import main as run_transform
-    run_transform()
+    from card_seg.src.data_pipeline.transform import main as run_transform
+    run_transform(
+        cards_dir=WORK_DIR / CONFIG.pf_ygo_cards,
+        bg_dir=WORK_DIR / CONFIG.pf_bg,
+        dest_dir=TRANSFORM_TO
+    )
 
 
 @task(name="Load")
-def load(dataset_version: str):
+def load():
     """Zip dataset and upload back to Google Cloud Storage."""
-    from card_seg.src.data_pipeline.tasks.load import load as run_load
-    run_load(dataset_version)
+    from common.data_pipeline.load import load as run_load
+    run_load(
+        bucket_name=CONFIG.bucket.name, 
+        src_dir=TRANSFORM_TO, 
+        dest_dir=CONFIG.bucket.pf_datasets
+    )
 
 
 @flow(name="Card Segmentation Data Pipeline")
-def data_pipeline(dataset_version: str):
+def data_pipeline():
     extract()
-    transform()
-    load(dataset_version)
+    # transform()
+    # load()
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", required=True)
+    parser.add_argument("--v", required=True)
     args = parser.parse_args()
 
-    data_pipeline(dataset_version=args.version)
+    TRANSFORM_TO = TRANSFORM_TO / args.v
+
+    data_pipeline()

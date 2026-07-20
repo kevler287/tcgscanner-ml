@@ -10,8 +10,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-LOCAL_DATA_DIR  = Path(os.getenv("LOCAL_DATA_DIR"))
-
 def download_from_gcs(bucket, prefix: str, local_dir: Path):
     if local_dir.exists() and any(local_dir.iterdir()):
         logger.info("Local data already exists at %s, skipping download.", local_dir)
@@ -52,4 +50,4 @@ def main(bucket_name: str, prefixes: List[str], dest_dir: Path):
     bucket = client.bucket(bucket_name=bucket_name)
 
     for prefix in prefixes:
-        download_from_gcs(bucket, prefix, dest_dir)
+        download_from_gcs(bucket, prefix, dest_dir / prefix)

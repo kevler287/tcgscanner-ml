@@ -4,9 +4,8 @@ from pathlib import Path
 from prefect import flow, task
 from ed_check.src.config import CONFIG
 
-WORK_DIR = Path(os.environ["LOCAL_DATA_DIR"]) / CONFIG.model_prefix / "data_pipeline"
-EXTRACT_TO = WORK_DIR / "raw"
-TRANSFORM_TO = WORK_DIR / "transformed"
+WORK_DIR = Path(os.environ["LOCAL_DATA_DIR"])
+TRANSFORM_TO = WORK_DIR / "datasets" / CONFIG.model_prefix
 
 @task(name="Extract")
 def extract():
@@ -15,7 +14,7 @@ def extract():
     run_extract(
         bucket_name=CONFIG.bucket.name, 
         prefixes=[CONFIG.pf_ed_types],
-        dest_dir=EXTRACT_TO
+        dest_dir=WORK_DIR
     )
 
 
@@ -24,7 +23,7 @@ def transform():
     """Generate synthetic YOLO training dataset from raw cards and backgrounds."""
     from ed_check.src.data_pipeline.transform import run_crop_transform
     run_crop_transform(
-        src_dir=EXTRACT_TO,
+        src_dir=WORK_DIR / CONFIG.pf_ed_types,
         dest_dir=TRANSFORM_TO
     )
 
@@ -48,4 +47,12 @@ def data_pipeline():
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--v", required=True)
+    args = parser.parse_args()
+
+    TRANSFORM_TO = TRANSFORM_TO / args.v
+
     data_pipeline()
