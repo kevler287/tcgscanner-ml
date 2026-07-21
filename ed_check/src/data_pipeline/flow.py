@@ -10,7 +10,7 @@ TRANSFORM_TO = WORK_DIR / "datasets" / CONFIG.model_prefix
 @task(name="Extract")
 def extract():
     """Download cards and backgrounds from GCS to local cache."""
-    from common.data_pipeline.extract import main as run_extract
+    from common.tasks.extract import extract_raw as run_extract
     run_extract(
         bucket_name=CONFIG.bucket.name, 
         prefixes=[CONFIG.pf_ed_types],
@@ -31,11 +31,11 @@ def transform():
 @task(name="Load")
 def load():
     """Zip dataset and upload back to Google Cloud Storage."""
-    from common.data_pipeline.load import load as run_load
+    from common.tasks.load import load_zip_to_gcs as run_load
     run_load(
         bucket_name=CONFIG.bucket.name, 
         src_dir=TRANSFORM_TO, 
-        dest_dir=CONFIG.bucket.pf_datasets
+        dest_prefix=CONFIG.bucket.pf_datasets
     )
 
 

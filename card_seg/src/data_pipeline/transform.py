@@ -165,7 +165,7 @@ def generate_yolo_label(corners, offset, bg_size):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def main(
+def transform(
     cards_dir: Path,
     bg_dir: Path,
     dest_dir: Path
@@ -191,7 +191,6 @@ def main(
         f"path: \n"
         f"train: images/train/\n"
         f"val: images/val/\n"
-        f"test: images/test/\n"
         f"\n"
         f"nc: 1\n"
         f"names:\n"
@@ -259,8 +258,7 @@ def main(
 def is_transform_done(output_dir: Path, expected_total: int) -> bool:
     existing = (
         len(list((output_dir / "images/train").glob("*.jpg"))) +
-        len(list((output_dir / "images/val").glob("*.jpg"))) +
-        len(list((output_dir / "images/test").glob("*.jpg")))
+        len(list((output_dir / "images/val").glob("*.jpg")))
     )
     if existing == expected_total:
         logger.info("Transform already done (%d samples found), skipping.", existing)
@@ -269,4 +267,4 @@ def is_transform_done(output_dir: Path, expected_total: int) -> bool:
 
 
 if __name__ == "__main__":
-    main()
+    transform()

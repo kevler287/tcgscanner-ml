@@ -16,7 +16,7 @@ import random
 import cv2
 import numpy as np
 from ed_check.src.config import CONFIG
-from common.data_pipeline import transform_helper
+from common.tasks import transform_helper
 from dotenv import load_dotenv
 
 load_dotenv()

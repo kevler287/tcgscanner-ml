@@ -12,17 +12,17 @@ TRANSFORM_TO = WORK_DIR / "datasets" / CONFIG.model_prefix
 @task(name="Extract")
 def extract():
     """Download cards and backgrounds from GCS to local cache."""
-    from common.data_pipeline.extract import main as run_extract
-    run_extract(
+    from common.tasks.extract import extract_zip
+    extract_zip(
         bucket_name=CONFIG.bucket.name, 
-        prefixes=[CONFIG.pf_ygo_cards, CONFIG.pf_bg],
+        blob_paths=[CONFIG.pf_ygo_cards, CONFIG.pf_bg],
         dest_dir=WORK_DIR
     )
 
 @task(name="Transform")
 def transform():
     """Generate synthetic YOLO training dataset from raw cards and backgrounds."""
-    from card_seg.src.data_pipeline.transform import main as run_transform
+    from card_seg.src.data_pipeline.transform import transform as run_transform
     run_transform(
         cards_dir=WORK_DIR / CONFIG.pf_ygo_cards,
         bg_dir=WORK_DIR / CONFIG.pf_bg,
@@ -31,21 +31,22 @@ def transform():
 
 
 @task(name="Load")
-def load():
+def load(overwrite: bool = False):
     """Zip dataset and upload back to Google Cloud Storage."""
-    from common.data_pipeline.load import load as run_load
-    run_load(
+    from common.tasks.load import load_zip_to_gcs
+    load_zip_to_gcs(
         bucket_name=CONFIG.bucket.name, 
         src_dir=TRANSFORM_TO, 
-        dest_dir=CONFIG.bucket.pf_datasets
+        dest_prefix=CONFIG.bucket.pf_datasets,
+        overwrite=overwrite
     )
 
 
 @flow(name="Card Segmentation Data Pipeline")
-def data_pipeline():
+def data_pipeline(overwrite: bool = False):
     extract()
-    # transform()
-    # load()
+    transform()
+    load(overwrite)
 
 
 if __name__ == "__main__":
@@ -53,6 +54,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--v", required=True)
+    parser.add_argument("--overwrite", required=False)
     args = parser.parse_args()
 
     TRANSFORM_TO = TRANSFORM_TO / args.v
