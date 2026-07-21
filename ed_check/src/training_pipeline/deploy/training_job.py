@@ -8,30 +8,22 @@ from pathlib import Path
 from google.oauth2 import service_account
 from google.cloud import storage
 
-from common.training_pipeline.extract import extract
+from common.cloud_computing.pod_fs import PodFileSystem
+from common.tasks.extract import extract_zip
 from ed_check.src.training_pipeline.tasks.train import train
 from ed_check.src.training_pipeline.tasks.evaluate import evaluate
 from ed_check.src.training_pipeline.tasks.load import load
 from ed_check.src.config import CONFIG
-from common.training_pipeline.pod_control import save_logs, stop_pod
-from common.training_pipeline.load import get_model_version
+from common.cloud_computing.pod_control import save_logs, stop_pod
+from common.tasks.load_ml import get_model_version
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-@dataclass
-class WorkDirs:
-    root:    Path = Path("/app")
-    dataset: Path = Path("/app/dataset")
-    runs:    Path = Path("/app/runs")
-    logs:    Path = Path("/app/training.log")
-
 def main():
-    dirs = WorkDirs()
-    dirs.dataset.mkdir(parents=True, exist_ok=True)
-    dirs.runs.mkdir(parents=True, exist_ok=True)
+    fs = PodFileSystem()
 
-    file_handler = logging.FileHandler(dirs.logs)
+    file_handler = logging.FileHandler(fs.log_path)
     file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
     logging.getLogger().addHandler(file_handler)
 
@@ -55,28 +47,24 @@ def main():
 
     try:
         logger.info("=== Step 1/4: Extract ===")
-        extract(
-            file_name=dataset_version,
+        extract_zip(
             bucket=bucket, 
-            blob_prefix=CONFIG.bucket.pf_datasets,
-            dest_dir=dirs.dataset / dataset_version,
-        )
-        extract(
-            file_name=testset_version,
-            bucket=bucket, 
-            blob_prefix=CONFIG.pf_test_data,
-            dest_dir=dirs.dataset / testset_version,
+            blob_paths=[
+                CONFIG.bucket.pf_datasets / f"{dataset_version}.zip",
+                CONFIG.pf_test_data / f"{testset_version}.zip",
+            ],
+            dest_dir=fs.data_dir / dataset_version,
         )
 
         logger.info("=== Step 2/4: Train ===")
         weights_path, train_csv_path = train(
-            data_dir=dirs.dataset / dataset_version,
-            results_dir=dirs.runs
+            data_dir=fs.data_dir / dataset_version,
+            results_dir=fs.run_dir
         )
 
         logger.info("=== Step 3/4: Evaluate ===")
         eval_metrics = evaluate(
-            data_dir=dirs.dataset / testset_version,
+            data_dir=fs.data_dir / testset_version,
             checkpoint_path=weights_path
         )
 
@@ -97,7 +85,7 @@ def main():
             file_handler.close()
             save_logs(
                 bucket=bucket,
-                src_path=dirs.logs,
+                src_path=fs.log_path,
                 dest_path=CONFIG.bucket.pf_logs + model_version + ".log"
             )
         except Exception as e:

@@ -13,7 +13,6 @@ class DefaultTrainConfig:
 
 @dataclass
 class DataFlowConfig:
-    output_dir:       str   = "card_seg/data_pipeline/output"
     background_size:  tuple = (600, 800)
     max_angle_deg:    int   = 10
     samples_per_card: int   = 3

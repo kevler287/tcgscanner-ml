@@ -13,7 +13,7 @@ from pathlib import Path
 
 from google.oauth2 import service_account
 from ed_check.src.config import CONFIG
-from common.training_pipeline.load import *
+from common.tasks.load_ml import *
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

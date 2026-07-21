@@ -3,34 +3,26 @@ import os
 import json
 import traceback
 import logging
-from pathlib import Path
 
 from google.oauth2 import service_account
 from google.cloud import storage
-import requests
 
 from card_seg.src.training_pipeline.tasks.extract import extract
 from card_seg.src.training_pipeline.tasks.train import train
 from card_seg.src.training_pipeline.tasks.evaluate import evaluate
 from card_seg.src.training_pipeline.tasks.load import load
 from card_seg.src.config import CONFIG
+from common.cloud_computing.pod_control import save_logs, stop_pod
+from common.cloud_computing.pod_fs import PodFileSystem
+from common.tasks.load_ml import get_model_version
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-@dataclass
-class WorkDirs:
-    root:    Path = Path("/app")
-    dataset: Path = Path("/app/dataset")
-    runs:    Path = Path("/app/runs")
-    logs:    Path = Path("/app/training.log")
-
 def main():
-    dirs = WorkDirs()
-    dirs.dataset.mkdir(parents=True, exist_ok=True)
-    dirs.runs.mkdir(parents=True, exist_ok=True)
+    fs = PodFileSystem()
 
-    file_handler = logging.FileHandler(dirs.logs)
+    file_handler = logging.FileHandler(fs.log_path)
     file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
     logging.getLogger().addHandler(file_handler)
 
@@ -38,21 +30,32 @@ def main():
     creds = service_account.Credentials.from_service_account_info(json.loads(creds_json))
     os.environ["GOOGLE_CLOUD_PROJECT"] = creds.project_id
 
+    client = storage.Client(credentials=creds)
+    bucket = client.bucket(CONFIG.bucket.name)
+
     dataset_version = os.environ["DATASET_VERSION"]
-    model_version = os.environ["MODEL_VERSION"]
+    testset_version = os.environ["TESTSET_VERSION"]
+    model_version = get_model_version(
+        dataset_version=dataset_version,
+        testset_version=testset_version,
+        bucket_name=CONFIG.bucket.name,
+        model_prefix=CONFIG.bucket.pf_models,
+        creds=creds
+    )
+    logger.info(f"Executing Training Pipeline for {CONFIG.model_prefix}/v{model_version}")
 
     try:
         logger.info("=== Step 1/4: Extract ===")
         data_yaml = extract(
             dataset_version=dataset_version,
             creds=creds,
-            work_dir=dirs.dataset
+            work_dir=fs.data_dir
         )
         logger.info("=== Step 2/4: Train ===")
         run_dir = train(
             data_yaml=data_yaml,
             run_name=model_version,
-            work_dir=dirs.runs
+            work_dir=fs.run_dir
         )
         logger.info("=== Step 3/4: Evaluate ===")
         eval_metrics = evaluate(
@@ -76,41 +79,14 @@ def main():
         try:
             file_handler.flush()
             file_handler.close()
-            _save_logs(creds=creds, log_path=dirs.logs, model_version=model_version)
+            save_logs(
+                bucket=bucket,
+                src_path=fs.log_path,
+                dest_path=CONFIG.bucket.pf_logs + model_version + ".log"
+            )
         except Exception as e:
             logger.error("Failed to upload logs: %s", e)
-        _stop_pod()
-
-def _save_logs(creds: service_account.Credentials, log_path: Path, model_version: str):
-    client = storage.Client(credentials=creds)
-    bucket = client.bucket(CONFIG.bucket.name)
-    blob = bucket.blob(f"models/{CONFIG.model_prefix}/{model_version}/training.log")    
-    blob.upload_from_filename(log_path)
-    logger.info("Logs uploaded to GCP")
-
-def _stop_pod():
-    pod_id = os.getenv("RUNPOD_POD_ID")
-    api_key = os.getenv("RUNPOD_API_KEY")
-
-    if not pod_id or not api_key:
-        logger.warning("RUNPOD_POD_ID or RUNPOD_API_KEY not set, skipping auto-stop")
-        return
-
-    query = """
-    mutation stopPod($podId: String!) {
-        podStop(input: { podId: $podId }) {
-            id
-        }
-    }
-    """
-
-    response = requests.post(
-        "https://api.runpod.io/graphql",
-        json={"query": query, "variables": {"podId": pod_id}},
-        headers={"Authorization": f"Bearer {api_key}"}
-    )
-    response.raise_for_status()
-    logger.info("Pod stopped successfully")
+        stop_pod()
 
 
 if __name__ == "__main__":
