@@ -11,9 +11,11 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
+from google.cloud import storage, bigquery
 from google.oauth2 import service_account
+from common.helper.gcs_io import upload_file
 from ed_check.src.config import CONFIG
-from common.tasks.load_ml import *
+from common.tasks.load import safe_float, safe_int
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -84,26 +86,38 @@ def load(
         train_csv_path: Path to csv file with metrics per epoch,
         eval_metrics: dict returned by evaluate() (accuracy, precision, recall, f1, support)
         creds: service account credentials
-
-    Returns:
-        dict with "weight_paths" (gs:// paths) and "num_epochs"
     """
 
-    upload_weights(
-        files={f"{model_version}.pt": weights_path},
-        bucket_name=CONFIG.bucket.name,
-        blob_prefix=CONFIG.bucket.pf_models,
-        creds=creds,
+    # Upload model file
+    gcs_client = storage.Client(credentials=creds)
+    bucket = gcs_client.bucket(bucket_name=CONFIG.bucket.name)
+    upload_file(
+        bucket=bucket,
+        file_path=weights_path,
+        blob_path=f"{CONFIG.bucket.pf_models}{model_version}.pt",
     )
 
+    # Insert training epoch metrics
+    bq_client = bigquery.Client(credentials=creds)
     epoch_rows = read_training_epochs(train_csv_path, model_version)
-    upload_table_rows(CONFIG.model_prefix, CONFIG.bq_training_epochs, epoch_rows, creds)
+    errors = bq_client.insert_rows_json(
+        f"{bq_client.project}.{CONFIG.model_prefix}.{CONFIG.bq_training_epochs}", 
+        epoch_rows
+    )
+    if errors:
+        logger.error(f"Failed to insert rows into {CONFIG.bq_training_epochs}: {errors}")
 
+    # Insert model run metrics
     model_run_row = build_model_run_row(
         model_version=model_version,
         num_epochs=len(epoch_rows),
         eval_metrics=eval_metrics,
     )
-    upload_table_rows(CONFIG.model_prefix, CONFIG.bq_model_runs, [model_run_row], creds)
+    errors = bq_client.insert_rows_json(
+        f"{bq_client.project}.{CONFIG.model_prefix}.{CONFIG.bq_model_runs}", 
+        [model_run_row]
+    )
+    if errors:
+        logger.error(f"Failed to insert row into {CONFIG.bq_model_runs}: {errors}")
 
     logger.info("Load complete for model_version=%s", model_version)

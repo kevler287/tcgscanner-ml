@@ -14,7 +14,7 @@ def extract():
     run_extract(
         bucket_name=CONFIG.bucket.name, 
         prefixes=[CONFIG.pf_ed_types],
-        dest_dir=WORK_DIR
+        work_dir=WORK_DIR
     )
 
 

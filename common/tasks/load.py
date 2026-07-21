@@ -1,7 +1,6 @@
 import logging
 from pathlib import Path
 from google.cloud import storage
-
 from common.helper.gcs_io import upload_file
 from common.helper.zip_helpers import zip_dir
 
@@ -26,3 +25,18 @@ def load_zip_to_gcs(bucket_name: str, src_dir: str, dest_prefix: str, overwrite:
     if zip_path.exists():
         zip_path.unlink()
         logger.info("Deleted local zip %s", zip_path)
+
+def safe_float(value):
+    """Convert value to float, returning None if conversion fails."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def safe_int(value):
+    """Convert value to int, returning None if conversion fails."""
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None

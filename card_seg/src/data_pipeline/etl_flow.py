@@ -16,7 +16,7 @@ def extract():
     extract_zip(
         bucket_name=CONFIG.bucket.name, 
         blob_paths=[CONFIG.pf_ygo_cards, CONFIG.pf_bg],
-        dest_dir=WORK_DIR
+        work_dir=WORK_DIR
     )
 
 @task(name="Transform")

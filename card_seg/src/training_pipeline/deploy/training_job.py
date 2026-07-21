@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import os
 import json
 import traceback
@@ -7,14 +6,14 @@ import logging
 from google.oauth2 import service_account
 from google.cloud import storage
 
-from card_seg.src.training_pipeline.tasks.extract import extract
 from card_seg.src.training_pipeline.tasks.train import train
 from card_seg.src.training_pipeline.tasks.evaluate import evaluate
 from card_seg.src.training_pipeline.tasks.load import load
 from card_seg.src.config import CONFIG
 from common.cloud_computing.pod_control import save_logs, stop_pod
 from common.cloud_computing.pod_fs import PodFileSystem
-from common.tasks.load_ml import get_model_version
+from common.helper.gcs_io import get_model_version
+from common.tasks.extract import extract_yolo
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,9 +45,9 @@ def main():
 
     try:
         logger.info("=== Step 1/4: Extract ===")
-        data_yaml = extract(
-            dataset_version=dataset_version,
-            creds=creds,
+        data_yaml = extract_yolo(
+            bucket=bucket,
+            blob_path=f"{CONFIG.bucket.pf_models}{dataset_version}.zip",
             work_dir=fs.data_dir
         )
         logger.info("=== Step 2/4: Train ===")

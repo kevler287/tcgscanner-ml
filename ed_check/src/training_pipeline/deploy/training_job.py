@@ -53,7 +53,7 @@ def main():
                 CONFIG.bucket.pf_datasets / f"{dataset_version}.zip",
                 CONFIG.pf_test_data / f"{testset_version}.zip",
             ],
-            dest_dir=fs.data_dir / dataset_version,
+            work_dir=fs.data_dir / dataset_version,
         )
 
         logger.info("=== Step 2/4: Train ===")

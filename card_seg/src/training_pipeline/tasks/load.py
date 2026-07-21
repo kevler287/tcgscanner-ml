@@ -7,6 +7,7 @@ from google.cloud import bigquery, storage
 from google.oauth2 import service_account
 
 from card_seg.src.config import CONFIG
+from common.tasks.load import safe_float
 
 logging.basicConfig(
     level=logging.INFO,
@@ -131,18 +132,18 @@ def insert_training_epochs(model_version: str, run_dir: Path, creds: service_acc
             "model_prefix":     MODEL_PREFIX,
             "model_version":    model_version,
             "epoch":            int(float(row.get("epoch", 0))),
-            "train_box_loss":   _safe_float(row.get("train/box_loss")),
-            "train_seg_loss":   _safe_float(row.get("train/seg_loss")),
-            "train_cls_loss":   _safe_float(row.get("train/cls_loss")),
-            "train_dfl_loss":   _safe_float(row.get("train/dfl_loss")),
-            "val_box_loss":     _safe_float(row.get("val/box_loss")),
-            "val_seg_loss":     _safe_float(row.get("val/seg_loss")),
-            "val_cls_loss":     _safe_float(row.get("val/cls_loss")),
-            "val_dfl_loss":     _safe_float(row.get("val/dfl_loss")),
-            "val_precision":    _safe_float(row.get("metrics/precision(M)")),
-            "val_recall":       _safe_float(row.get("metrics/recall(M)")),
-            "val_map50":        _safe_float(row.get("metrics/mAP50(M)")),
-            "val_map50_95":     _safe_float(row.get("metrics/mAP50-95(M)")),
+            "train_box_loss":   safe_float(row.get("train/box_loss")),
+            "train_seg_loss":   safe_float(row.get("train/seg_loss")),
+            "train_cls_loss":   safe_float(row.get("train/cls_loss")),
+            "train_dfl_loss":   safe_float(row.get("train/dfl_loss")),
+            "val_box_loss":     safe_float(row.get("val/box_loss")),
+            "val_seg_loss":     safe_float(row.get("val/seg_loss")),
+            "val_cls_loss":     safe_float(row.get("val/cls_loss")),
+            "val_dfl_loss":     safe_float(row.get("val/dfl_loss")),
+            "val_precision":    safe_float(row.get("metrics/precision(M)")),
+            "val_recall":       safe_float(row.get("metrics/recall(M)")),
+            "val_map50":        safe_float(row.get("metrics/mAP50(M)")),
+            "val_map50_95":     safe_float(row.get("metrics/mAP50-95(M)")),
         })
 
     errors = client.insert_rows_json(table_id, rows)
@@ -150,14 +151,6 @@ def insert_training_epochs(model_version: str, run_dir: Path, creds: service_acc
         raise RuntimeError(f"Failed to insert training_epochs rows: {errors}")
 
     logger.info("Inserted %d epoch rows for %s", len(rows), model_version)
-
-
-def _safe_float(value):
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
 
 def load(
     model_version: str,

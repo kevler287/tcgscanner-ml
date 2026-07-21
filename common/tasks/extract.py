@@ -14,31 +14,30 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def extract_raw(bucket_name: str, prefixes: List[str], dest_dir: Path):
+def extract_raw(bucket_name: str, prefixes: List[str], work_dir: Path):
     client = storage.Client()
     bucket = client.bucket(bucket_name=bucket_name)
 
     for prefix in prefixes:
-        download_files(bucket, prefix, dest_dir / prefix)
+        download_files(bucket, prefix, work_dir / prefix)
 
-def extract_zip(bucket_name: str, blob_paths: List[str], dest_dir: Path):
+def extract_zip(bucket_name: str, blob_paths: List[str], work_dir: Path):
     client = storage.Client()
     bucket = client.bucket(bucket_name=bucket_name)
 
     for blob_path in blob_paths:
-        local_path = dest_dir / blob_path
+        local_path = work_dir / blob_path
         download_file(bucket, blob_path, local_path)
-        unzip_file(zip_path=local_path, extract_to=dest_dir)
+        unzip_file(zip_path=local_path)
 
-#TODO refactor when used again
 def extract_yolo(
-    dataset_version: str,
     bucket: storage.Bucket,
-    blob_prefix: str,
-    dest_dir: Path,
+    blob_path: str,
+    work_dir: Path,
 ) -> str:
-    zip_path = download_file(dataset_version, bucket, blob_prefix, dest_dir)
-    dataset_dir = unzip_file(zip_path, dest_dir)
+    local_path = work_dir / blob_path
+    download_file(bucket, blob_path, local_path)
+    dataset_dir = unzip_file(zip_path=local_path)
 
     data_yaml = dataset_dir / "data.yaml"
     if not data_yaml.exists():

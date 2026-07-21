@@ -50,7 +50,10 @@ def zip_dir(source_dir: Path, zip_name: str = None) -> Path:
     logger.info("Zip created (%.1f MB)", zip_path.stat().st_size / 1024 / 1024)
     return zip_path
 
-def unzip_file(zip_path: Path, extract_to: Path) -> Path:
+def unzip_file(zip_path: Path, extract_to: Path = None) -> Path:
+    if extract_to is None:
+        extract_to = zip_path.parent / zip_path.stem
+    
     logger.info("Extracting %s -> %s", zip_path, extract_to)
     extract_to.mkdir(parents=True, exist_ok=True)
 
