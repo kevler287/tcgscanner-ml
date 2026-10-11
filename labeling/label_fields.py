@@ -1,23 +1,23 @@
 from nicegui import ui
 
-from prelabel.labeler.ygo_card_type import COLORS
-
 # One entry per label field.
 # type: "select" (needs "options", optional "keys" {key: option}),
-#       "text", "number" or "bool" (optional "key" toggles it)
+#       "text", "number" or "bool" (optional "key" toggles it; with "advance": True the key
+#       sets it to True and jumps to the next image)
 FIELDS = [
     {
         "name": "card_type",
         "type": "select",
         # "pendulum" is set by the labeler but is not a frame color
-        "options": list(COLORS) + ["pendulum"],
+        "options": ["normal", "effect", "ritual", "fusion", "synchro", "xyz", "link", "spell", "trap", "pendulum"],
         "keys": {
             "n": "normal", "e": "effect", "r": "ritual", "f": "fusion", "y": "synchro",
             "x": "xyz", "l": "link", "s": "spell", "t": "trap", "p": "pendulum",
         },
     },
+    {"name": "first_edition", "type": "bool", "key": "1"},
     {"name": "faulty", "type": "bool", "key": "d"},
-    {"name": "reviewed", "type": "bool", "key": "Enter"},
+    {"name": "reviewed", "type": "bool", "key": "Enter", "advance": True},
 ]
 
 CHIP = "px-3 py-1 rounded-full cursor-pointer select-none "
@@ -30,7 +30,8 @@ def handle_key(field, key, value):
     if field["type"] == "select" and key in field.get("keys", {}):
         return True, field["keys"][key]
     if field["type"] == "bool" and key == field.get("key"):
-        return True, not value
+        # "advance" fields are always set to True (the app then jumps to the next image)
+        return True, True if field.get("advance") else not value
     return False, value
 
 
